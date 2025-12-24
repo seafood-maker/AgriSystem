@@ -87,7 +87,7 @@ if df_master is not None:
         # 2. 系統型網格現況統計
         st.subheader("🌐 系統型網格現況統計")
         grid_df = df_master.drop_duplicates('網格編號').copy()
-        grid_df['網格監測頻率'] = grid_df['網格監測頻率'].fillna('無狀態').astype(str).str.strip()
+        grid_df['網格監測頻率'] = grid_df['網格監測頻率'].fillna('無網格狀態').astype(str).str.strip()
         
         g_cont = len(grid_df[grid_df['網格監測頻率'].str.contains('持續', na=False)])
         g_ext = len(grid_df[grid_df['網格監測頻率'].str.contains('延長', na=False)])
@@ -95,7 +95,7 @@ if df_master is not None:
         g_total_active = g_cont + g_ext + g_exited
         g_none = len(grid_df) - g_total_active
 
-        # 確保 5 欄水平
+        # 5 欄水平排版
         g_cols = st.columns(5)
         g_cols[0].metric("持續網格", g_cont)
         g_cols[1].metric("延長網格", g_ext)
@@ -105,43 +105,40 @@ if df_master is not None:
 
         st.divider()
 
-        # 3. 個案型農地現況統計 (解決數量 0 與階梯排版)
+        # 3. 個案型農地現況統計 (嚴格對照您的演算清單)
         st.subheader("📦 個案型農地現況統計")
         
-        # 篩選個案型資料
-        case_data = df_master[df_master['調查方式'].astype(str).str.contains('個案', na=False)].copy()
+        # 【修正核心】：我們先抓出所有明確標示為個案型的，
+        # 加上那些雖然調查方式空白，但狀態是『建物』或『難以採樣』且不在網格內的點位
+        case_data = df_master[
+            (df_master['調查方式'].astype(str).str.contains('個案', na=False)) | 
+            ((df_master['調查方式'].isna() | (df_master['調查方式'] == '')) & 
+             (df_master['目前農地調查現況'].astype(str).str.contains('建物|難以採樣', na=False)))
+        ].copy()
+        
         case_data['目前農地調查現況'] = case_data['目前農地調查現況'].fillna('未知').astype(str).str.strip()
         
-        # 定義統計字典
+        # 演算對照清單實作
         c_stats = {
-            "持續": len(case_data[case_data['目前農地調查現況'].str.contains('增量', na=False)]),
-            "延長": len(case_data[case_data['目前農地調查現況'].str.contains('延長', na=False)]),
-            "退場": len(case_data[case_data['目前農地調查現況'].str.contains('正常', na=False)]),
-            "管制": len(case_data[case_data['目前農地調查現況'].str.contains('管制', na=False)]),
-            "難以採樣": len(case_data[case_data['目前農地調查現況'].str.contains('難以採樣', na=False)]),
-            "建物": len(case_data[case_data['目前農地調查現況'].str.contains('建物', na=False)])
+            "持續": len(case_data[case_data['目前農地調查現況'] == '增量']),
+            "延長": len(case_data[case_data['Currently_Investigation_Status'] == '延長' if 'Currently_Investigation_Status' in case_data else case_data['目前農地調查現況'] == '延長']),
+            "退場": len(case_data[case_data['目前農地調查現況'] == '正常']),
+            "管制": len(case_data[case_data['目前農地調查現況'] == '管制']),
+            "難以採樣": len(case_data[case_data['目前農地調查現況'] == '難以採樣']),
+            "建物": len(case_data[case_data['目前農地調查現況'] == '建物'])
         }
+        
+        # 針對『延長』做更強韌的判斷 (避免 Excel 裡有多種寫法)
+        c_stats["延長"] = len(case_data[case_data['目前農地調查現況'].str.contains('延長', na=False)])
 
-        # 建立 6 個欄位並填入數據 (確保水平)
+        # 6 欄水平排版 (解決階梯問題)
         c_cols = st.columns(6)
-        c_labels = ["持續", "延長", "退場", "管制", "難以採樣", "建物"]
-        for i, label in enumerate(c_labels):
-            c_cols[i].metric(label, c_stats[label])
-
-        # 🔍 強力診斷工具：為什麼建物和難以採樣是 0？
-        if c_stats["建物"] == 0 or c_stats["難以採樣"] == 0:
-            with st.expander("🛠️ 深度數據檢查：為什麼統計為 0？"):
-                st.write("系統檢查了全資料庫 (2453筆)，發現如下：")
-                total_build = len(df_master[df_master['目前農地調查現況'].astype(str).str.contains('建物', na=False)])
-                total_hard = len(df_master[df_master['目前農地調查現況'].astype(str).str.contains('難以採樣', na=False)])
-                st.write(f"1. 全資料庫中共有 {total_build} 筆『建物』，{total_hard} 筆『難以採樣』")
-                
-                # 檢查這幾筆的調查方式寫了什麼
-                if total_build > 0:
-                    sample = df_master[df_master['目前農地調查現況'].astype(str).str.contains('建物', na=False)]
-                    st.write("2. 這些『建物』點位的『調查方式』欄位分別寫了：")
-                    st.write(sample['調查方式'].unique())
-                    st.info("💡 如果上面顯示的不是『個案型農地』，這就是為什麼統計不到的原因！")
+        c_cols[0].metric("持續", c_stats["持續"])
+        c_cols[1].metric("延長", c_stats["延長"])
+        c_cols[2].metric("退場", c_stats["退場"])
+        c_cols[3].metric("管制", c_stats["管制"])
+        c_cols[4].metric("難以採樣", c_stats["難以採樣"])
+        c_cols[5].metric("建物", c_stats["建物"])
 
         st.divider()
 
@@ -237,6 +234,7 @@ if df_master is not None:
 
 else:
     st.error("❌ 讀取 Excel 失敗")
+
 
 
 
