@@ -8,3 +8,5 @@ geopandas
 openpyxl
 shapely
 pyogrio
+plotly
+xlsxwriter
