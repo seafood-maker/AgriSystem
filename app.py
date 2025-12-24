@@ -73,7 +73,7 @@ if df_master is not None:
         st.title("🚜 彰化縣農地監測戰情室")
         st.info(f"📅 當前時間：{get_minguo_date()}")
 
-        # 1. 頂列統計指標 (確保 6 欄水平排列)
+        # 1. 頂列統計指標 (全域 2453 筆基準 - 水平排列)
         m1, m2, m3, m4, m5, m6 = st.columns(6)
         m1.metric("總資料點數", abs_total)
         m2.metric("總採樣點數", sampling_pts)
@@ -86,16 +86,17 @@ if df_master is not None:
 
         # 2. 系統型網格現況統計
         st.subheader("🌐 系統型網格現況統計")
+        # 取得網格唯一清單並清洗數據
         grid_df = df_master.drop_duplicates('網格編號').copy()
         grid_df['網格監測頻率'] = grid_df['網格監測頻率'].fillna('無網格狀態').astype(str).str.strip()
         
-        g_cont = len(grid_df[grid_df['網格監測頻率'].str.contains('持續', na=False)])
-        g_ext = len(grid_df[grid_df['網格監測頻率'].str.contains('延長', na=False)])
-        g_exited = len(grid_df[grid_df['網格監測頻率'].str.contains('退場', na=False)])
+        g_cont = len(grid_df[grid_df['網格監測頻率'] == '持續'])
+        g_ext = len(grid_df[grid_df['網格監測頻率'] == '延長'])
+        g_exited = len(grid_df[grid_df['網格監測頻率'] == '退場'])
         g_total_active = g_cont + g_ext + g_exited
         g_none = len(grid_df) - g_total_active
 
-        # 5 欄水平排版
+        # 水平排列 5 個網格指標
         g_cols = st.columns(5)
         g_cols[0].metric("持續網格", g_cont)
         g_cols[1].metric("延長網格", g_ext)
@@ -105,33 +106,26 @@ if df_master is not None:
 
         st.divider()
 
-        # 3. 個案型農地現況統計 (嚴格對照您的演算清單)
+        # 3. 個案型農地現況統計 (修正：排除系統型即為個案型，確保抓到建物)
         st.subheader("📦 個案型農地現況統計")
         
-        # 【修正核心】：我們先抓出所有明確標示為個案型的，
-        # 加上那些雖然調查方式空白，但狀態是『建物』或『難以採樣』且不在網格內的點位
-        case_data = df_master[
-            (df_master['調查方式'].astype(str).str.contains('個案', na=False)) | 
-            ((df_master['調查方式'].isna() | (df_master['調查方式'] == '')) & 
-             (df_master['目前農地調查現況'].astype(str).str.contains('建物|難以採樣', na=False)))
-        ].copy()
-        
+        # 核心：抓取所有不是「系統型農地」的資料
+        # 這樣即使『調查方式』欄位空白的建物，也會被算進個案型
+        case_data = df_master[~df_master['調查方式'].astype(str).str.contains('系統', na=False)].copy()
         case_data['目前農地調查現況'] = case_data['目前農地調查現況'].fillna('未知').astype(str).str.strip()
         
-        # 演算對照清單實作
+        # 嚴格執行您的對照清單：
+        # 增量->持續, 延長->延長, 正常->退場, 其餘照舊
         c_stats = {
             "持續": len(case_data[case_data['目前農地調查現況'] == '增量']),
-            "延長": len(case_data[case_data['Currently_Investigation_Status'] == '延長' if 'Currently_Investigation_Status' in case_data else case_data['目前農地調查現況'] == '延長']),
+            "延長": len(case_data[case_data['目前農地調查現況'] == '延長']),
             "退場": len(case_data[case_data['目前農地調查現況'] == '正常']),
             "管制": len(case_data[case_data['目前農地調查現況'] == '管制']),
             "難以採樣": len(case_data[case_data['目前農地調查現況'] == '難以採樣']),
             "建物": len(case_data[case_data['目前農地調查現況'] == '建物'])
         }
-        
-        # 針對『延長』做更強韌的判斷 (避免 Excel 裡有多種寫法)
-        c_stats["延長"] = len(case_data[case_data['目前農地調查現況'].str.contains('延長', na=False)])
 
-        # 6 欄水平排版 (解決階梯問題)
+        # 水平排列 6 個個案指標
         c_cols = st.columns(6)
         c_cols[0].metric("持續", c_stats["持續"])
         c_cols[1].metric("延長", c_stats["延長"])
@@ -234,6 +228,7 @@ if df_master is not None:
 
 else:
     st.error("❌ 讀取 Excel 失敗")
+
 
 
 
