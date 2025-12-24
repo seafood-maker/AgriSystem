@@ -68,12 +68,12 @@ if df_master is not None:
     hard_count = len(df_master[df_master['農地監測狀態'].astype(str).str.contains('難以採樣')])
     normal_count = len(df_master[df_master['農地監測狀態'].astype(str).str.contains('正常')])
 
-    # --- A. 統計首頁 ---
+# --- A. 統計首頁 ---
     if menu == "統計首頁":
         st.title("🚜 彰化縣農地監測戰情室")
         st.info(f"📅 當前時間：{get_minguo_date()}")
 
-        # 1. 頂列統計指標
+        # 1. 頂列統計指標 (水平排列)
         m1, m2, m3, m4, m5, m6 = st.columns(6)
         m1.metric("總資料點數", abs_total)
         m2.metric("總採樣點數", sampling_pts)
@@ -84,31 +84,57 @@ if df_master is not None:
 
         st.divider()
 
-        # 2. 系統型網格現況
+        # 2. 系統型網格現況統計
         st.subheader("🌐 系統型網格現況統計")
-        grid_df = df_master.drop_duplicates('網格編號')
-        g_cont = len(grid_df[grid_df['網格監測頻率'] == '持續'])
-        g_ext = len(grid_df[grid_df['網格監測頻率'] == '延長'])
-        g_exited = len(grid_df[grid_df['網格監測頻率'] == '退場'])
+        grid_df = df_master.drop_duplicates('網格編號').copy()
+        # 強制轉為字串並去除空白，處理 NaN 值
+        grid_df['網格監測頻率'] = grid_df['網格監測頻率'].fillna('無狀態').astype(str).str.strip()
+        
+        g_cont = len(grid_df[grid_df['網格監測頻率'].str.contains('持續', na=False)])
+        g_ext = len(grid_df[grid_df['網格監測頻率'].str.contains('延長', na=False)])
+        g_exited = len(grid_df[grid_df['網格監測頻率'].str.contains('退場', na=False)])
         g_total_active = g_cont + g_ext + g_exited
+        g_none = len(grid_df) - g_total_active
 
-        g1, g2, g3, g4, g5 = st.columns(5)
-        g1.metric("網格總數", len(grid_df))
-        g2.metric("持續網格", g_cont)
-        g3.metric("延長網格", g_ext)
-        g4.metric("退場網格", g_exited)
-        g5.metric("有效網格合計", g_total_active)
+        g_col1, g_col2, g_col3, g_col4, g_col5 = st.columns(5)
+        g_col1.metric("持續網格", g_cont)
+        g_col2.metric("延長網格", g_ext)
+        g_col3.metric("退場網格", g_exited)
+        g_col4.metric("有效網格合計", g_total_active)
+        g_col5.metric("無網格狀態", g_none)
 
-        # 3. 個案型農地現況 (對照映射)
+        st.divider()
+
+        # 3. 個案型農地現況統計 (解決階梯式排版與數據歸 0 問題)
         st.subheader("📦 個案型農地現況統計")
-        case_df = df_master[df_master['調查方式'] == '個案型農地'].copy()
-        status_map = {'增量': '持續', '延長': '延長', '正常': '退場', '難以採樣': '難以採樣', '管制': '管制', '建物': '建物'}
-        case_df['顯示狀態'] = case_df['目前農地調查現況'].map(status_map)
-        case_counts = case_df['顯示狀態'].value_counts()
+        
+        # 核心：清洗個案型數據
+        case_data = df_master[df_master['調查方式'].astype(str).str.contains('個案', na=False)].copy()
+        case_data['目前農地調查現況'] = case_data['目前農地調查現況'].fillna('未知').astype(str).str.strip()
+        
+        # 依照您的要求進行狀態對照計數
+        c_count = {
+            "持續": len(case_data[case_data['目前農地調查現況'].str.contains('增量', na=False)]),
+            "延長": len(case_data[case_data['目前農地調查現況'].str.contains('延長', na=False)]),
+            "退場": len(case_data[case_data['目前農地調查現況'].str.contains('正常', na=False)]),
+            "管制": len(case_data[case_data['目前農地調查現況'].str.contains('管制', na=False)]),
+            "難以採樣": len(case_data[case_data['目前農地調查現況'].str.contains('難以採樣', na=False)]),
+            "建物": len(case_data[case_data['目前農地調查現況'].str.contains('建物', na=False)])
+        }
 
+        # 重要：預先定義 6 列，確保水平排列
         c1, c2, c3, c4, c5, c6 = st.columns(6)
-        for idx, lab in enumerate(['持續', '延長', '退場', '管制', '難以採樣', '建物']):
-            st.columns(6)[idx].metric(lab, case_counts.get(lab, 0))
+        c1.metric("持續", c_count["持續"])
+        c2.metric("延長", c_count["延長"])
+        c3.metric("退場", c_count["退場"])
+        c4.metric("管制", c_count["管制"])
+        c5.metric("難以採樣", c_count["難以採樣"])
+        c6.metric("建物", c_count["建物"])
+
+        # 🔍 自動診斷工具：如果還是 0，則顯示目前後台看到的字樣是什麼
+        if c_count["建物"] == 0 and c_count["難以採樣"] == 0:
+            st.info("💡 診斷提示：目前個案型農地的『目前農地調查現況』欄位中，偵測到的內容為：")
+            st.write(case_data['目前農地調查現況'].unique())
 
         st.divider()
 
@@ -204,3 +230,4 @@ if df_master is not None:
 
 else:
     st.error("❌ 讀取 Excel 失敗")
+
