@@ -192,6 +192,7 @@ def init_db(engine):
         return
 
     with engine.begin() as conn:
+        # ---------- standards ----------
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS standards (
             item TEXT PRIMARY KEY,
@@ -201,6 +202,7 @@ def init_db(engine):
         );
         """))
 
+        # ---------- blocks ----------
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS blocks (
             block_id TEXT NOT NULL,
@@ -210,7 +212,7 @@ def init_db(engine):
         );
         """))
 
-        # lands：用 lot_no（地段地號）做唯一鍵
+        # ---------- lands (base create) ----------
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS lands (
             lot_no TEXT PRIMARY KEY,
@@ -219,23 +221,42 @@ def init_db(engine):
             grid_id TEXT,
             township TEXT,
             survey_method TEXT,
-            rep_role TEXT,          -- 代表/備用/空白
+            rep_role TEXT,
             water_type TEXT,
 
             coord_x DOUBLE PRECISION,
             coord_y DOUBLE PRECISION,
 
             initial_metals JSONB,
-            current_metal_result TEXT,  -- 增量/延長/正常/管制/建物/難以採樣
-            admin_status TEXT,          -- 監測/管制/建物/正常/難以採樣
-            freq TEXT,                  -- 持續/延長/退場/管制
+            current_metal_result TEXT,
+            admin_status TEXT,
+            freq TEXT,
             last_year INTEGER,
-            year_status JSONB,          -- {"101":"監測",...}
+            year_status JSONB,
 
             updated_at TIMESTAMP DEFAULT NOW()
         );
         """))
 
+        # ✅ 補欄位：避免你 DB 是舊表缺欄位造成 ProgrammingError
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS sgm_no TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS land_serial TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS grid_id TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS township TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS survey_method TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS rep_role TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS water_type TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS coord_x DOUBLE PRECISION;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS coord_y DOUBLE PRECISION;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS initial_metals JSONB;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS current_metal_result TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS admin_status TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS freq TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS last_year INTEGER;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS year_status JSONB;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();"))
+
+        # ---------- samples ----------
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS samples (
             sample_id SERIAL PRIMARY KEY,
@@ -253,9 +274,9 @@ def init_db(engine):
             total JSONB,
             used_total BOOLEAN DEFAULT FALSE,
 
-            admin_status TEXT,     -- 本次現勘狀態：監測/管制/建物/正常/難以採樣
-            metal_result TEXT,     -- 本次金屬判定：增量/延長/正常/管制
-            freq TEXT,             -- 本次策略頻率：持續/延長/退場/管制
+            admin_status TEXT,
+            metal_result TEXT,
+            freq TEXT,
 
             da_pct JSONB,
             er JSONB,
@@ -264,7 +285,22 @@ def init_db(engine):
         );
         """))
 
-        # 唯一索引（用 IF NOT EXISTS，避免 DO $$）
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS sample_date DATE;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS coord_x DOUBLE PRECISION;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS coord_y DOUBLE PRECISION;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS photo_site TEXT;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS photo_sample TEXT;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS xrf JSONB;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS total JSONB;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS used_total BOOLEAN DEFAULT FALSE;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS admin_status TEXT;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS metal_result TEXT;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS freq TEXT;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS da_pct JSONB;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS er JSONB;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();"))
+
+        # ---------- indexes ----------
         conn.execute(text("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_samples_lot_year_unique
         ON samples(lot_no, year);
@@ -1369,6 +1405,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
