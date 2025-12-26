@@ -585,15 +585,18 @@ def admin_import_excel_to_db():
             lcol = next((c for c in bcols if "地段" in c), None)
             rcol = next((c for c in bcols if "代表" in c), None)
             if gcol and lcol:
-                with engine.begin() as conn:
-                     conn.execute(text("DELETE FROM blocks;"))
+              with engine.begin() as conn:
+     conn.execute(text("DELETE FROM blocks;"))
 
     # ✅ 先去重（同一 block_id + lot_no 只留一筆）
     df_bx2 = df_bx.copy()
     df_bx2[gcol] = df_bx2[gcol].astype(str).str.strip()
     df_bx2[lcol] = df_bx2[lcol].astype(str).str.strip()
     df_bx2 = df_bx2.drop_duplicates(subset=[gcol, lcol], keep="last")
-                    for _, r in df_bx.iterrows():
+
+    for _, r in df_bx2.iterrows():
+        ...
+
                         block_id = safe_str(r[gcol])
                         lot_no = safe_str(r[lcol])
                         is_rep = safe_str(r.get(rcol, "")) if rcol else ""
@@ -1011,5 +1014,6 @@ elif menu == "空間地圖檢視":
         ).add_to(m)
 
     st_folium(m, use_container_width=True, height=650)
+
 
 
