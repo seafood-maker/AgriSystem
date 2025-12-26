@@ -282,10 +282,86 @@ if df_master is not None:
             else: st.info("尚無異動紀錄")
 
     # --- C/D/E 頁面 (保留 11.0 穩定邏輯) ---
-    elif menu == "新年度調查點篩選名單":
-        st.title("📅 115 年度篩選初步結果")
-        f_list = df_master[(df_master['目前農地調查現況'] == '增量') | ((df_master['目前農地調查現況'] == '延長') & (df_master['最後調查年分'] <= 113))].copy()
-        st.dataframe(f_list)
+        elif menu == "新年度調查點篩選名單":
+        st.title("📅 年度調查計畫自動生成器")
+        target_year = st.selectbox("請選擇預計調查年度 (民國)", [114, 115, 116], index=1)
+        
+        st.markdown(f"""
+        <div class="filter-card">
+        <b>演算法規則說明：</b><br>
+        1. <b>持續型：</b>目前現況為『增量』之農地及所屬網格。<br>
+        2. <b>延長型：</b>目前現況為『延長』且距離上次調查已達頻率年限者。<br>
+        3. <b>自動補位：</b>若網格代表點失效 (建物/管制)，系統將自動標示需從備用點遞補。
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 演算法執行
+        df_calc = df_master.copy()
+        
+        # 1. 計算個案型名單
+        case_list = df_calc[
+            (~df_calc['調查方式'].str.contains('系統', na=False)) & 
+            (
+                (df_calc['目前農地調查現況'] == '增量') | 
+                ((df_calc['目前農地調查現況'] == '延長') & (target_year - df_calc['最後調查年分'] >= df_calc['延長頻率']))
+            )
+        ].copy()
+        case_list['篩選分類'] = '個案型獨立監測'
+
+        # 2. 計算系統型網格名單 (包含補位邏輯)
+        grid_list = []
+        all_grids = df_calc[df_calc['調查方式'].str.contains('系統', na=False)]['網格編號'].unique()
+        
+        for g_id in all_grids:
+            g_data = df_calc[df_calc['網格編號'] == g_id]
+            g_freq = str(g_data['網格監測頻率'].iloc[0])
+            last_y = g_data['最後調查年分'].max()
+            
+            # 判斷網格是否該查
+            should_survey_grid = False
+            if g_freq == '持續': should_survey_grid = True
+            elif g_freq == '延長' and (target_year - last_y >= 2): # 網格預設頻率 2
+                should_survey_grid = True
+            
+            if should_survey_grid:
+                # 找出目前有效的代表點
+                reps = g_data[g_data['代表性'] == '代表點']
+                active_reps = reps[~reps['農地監測狀態'].isin(['管制', '建物', '難以採樣'])]
+                
+                # 判定是否需要遞補
+                if len(active_reps) < 3:
+                    backups = g_data[g_data['代表性'] == '備用點'].sort_values('農地序號')
+                    needed = 3 - len(active_reps)
+                    to_add = backups.head(needed)
+                    # 合併有效代表點與遞補點
+                    final_g_list = pd.concat([active_reps, to_add])
+                    final_g_list['篩選分類'] = f'系統型網格 ({g_freq}) - 包含遞補'
+                else:
+                    final_g_list = active_reps.copy()
+                    final_g_list['篩選分類'] = f'系統型網格 ({g_freq})'
+                
+                grid_list.append(final_g_list)
+
+        # 合併所有結果
+        if grid_list:
+            sys_final = pd.concat(grid_list)
+            full_plan = pd.concat([case_list, sys_final])
+        else:
+            full_plan = case_list
+
+        # 顯示結果
+        st.subheader(f"📍 {target_year} 年度建議調查清單 (共 {len(full_plan)} 筆)")
+        
+        # 增加篩選按鈕
+        show_type = st.multiselect("過濾類別", full_plan['篩選分類'].unique(), default=full_plan['篩選分類'].unique())
+        display_df = full_plan[full_plan['篩選分類'].isin(show_type)]
+        
+        st.dataframe(display_df[['網格編號', '地段地號', '農地序號', '目前農地調查現況', '最後調查年分', '篩選分類']], height=600, use_container_width=True)
+
+        # 下載按鈕
+        towrite = io.BytesIO()
+        display_df.to_excel(towrite, index=False, engine='xlsxwriter')
+        st.download_button(f"📥 下載 {target_year} 年度調查工作單", data=towrite.getvalue(), file_name=f"彰化農地_{target_year}_工作單.xlsx")
 
     elif menu == "新增年度調查結果":
         st.title("➕ 錄入採樣判定")
@@ -297,5 +373,6 @@ if df_master is not None:
         # (保留 Folium 衛星底圖邏輯)
 else:
     st.error("系統讀取失敗，請確認檔案。")
+
 
 
