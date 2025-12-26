@@ -436,7 +436,7 @@ if df_master is not None:
                     color = "red" if "增量" in status else "blue"
                 else:
                     sides = 4 # 正方形
-                    color = "red" if "增量" in status else "blue"
+                    color = "yellow" if "增量" in status else "green"
                 
                 folium.RegularPolygonMarker(
                     location=[lat, lon], number_of_sides=sides, radius=8,
@@ -497,6 +497,7 @@ if df_master is not None:
         st_folium(m, width=1100, height=700)
 else:
     st.error("❌ Excel 載入失敗")
+
 
 
 
