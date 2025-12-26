@@ -586,7 +586,13 @@ def admin_import_excel_to_db():
             rcol = next((c for c in bcols if "代表" in c), None)
             if gcol and lcol:
                 with engine.begin() as conn:
-                    conn.execute(text("DELETE FROM blocks;"))
+                     conn.execute(text("DELETE FROM blocks;"))
+
+    # ✅ 先去重（同一 block_id + lot_no 只留一筆）
+    df_bx2 = df_bx.copy()
+    df_bx2[gcol] = df_bx2[gcol].astype(str).str.strip()
+    df_bx2[lcol] = df_bx2[lcol].astype(str).str.strip()
+    df_bx2 = df_bx2.drop_duplicates(subset=[gcol, lcol], keep="last")
                     for _, r in df_bx.iterrows():
                         block_id = safe_str(r[gcol])
                         lot_no = safe_str(r[lcol])
@@ -595,7 +601,9 @@ def admin_import_excel_to_db():
                         if block_id and lot_no:
                             conn.execute(text("""
                             INSERT INTO blocks (block_id, lot_no, is_rep)
-                            VALUES (:block_id, :lot_no, :is_rep);
+                            VALUES (:block_id, :lot_no, :is_rep)
+                            ON CONFLICT (block_id, lot_no) DO UPDATE
+                            SET is_rep = EXCLUDED.is_rep;
                             """), {"block_id": block_id, "lot_no": lot_no, "is_rep": is_rep_bool})
 
         # 3) lands
@@ -1003,4 +1011,5 @@ elif menu == "空間地圖檢視":
         ).add_to(m)
 
     st_folium(m, use_container_width=True, height=650)
+
 
