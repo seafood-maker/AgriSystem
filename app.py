@@ -87,7 +87,7 @@ st.sidebar.title("🌿 系統導覽")
 menu = st.sidebar.radio("功能導覽", ["統計首頁", "資料庫查詢與下載", "新增年度調查結果", "空間地圖檢視"])
 
 if df_master is not None:
-    # 全域數據統計
+    # --- 全域統計數據計算 ---
     abs_total = len(df_master)
     sampling_pts = len(df_master[df_master['代表性'].isin(['代表點', '備用點'])])
     control_count = len(df_master[df_master['農地監測狀態'].astype(str).str.contains('管制', na=False)])
@@ -100,18 +100,18 @@ if df_master is not None:
         st.title("🚜 彰化縣農地監測戰情室")
         st.subheader(f"📅 當前時間：{get_minguo_date()}")
 
-        # 1. 頂列統計指標
-        k1, k2, k3, k4, k5, k6 = st.columns(6)
-        k1.metric("總資料點數", abs_total)
-        k2.metric("總採樣點數", sampling_pts)
-        k3.metric("管制點數", control_count)
-        k4.metric("建物數量", build_count)
-        k5.metric("難以採樣數量", hard_count)
-        k6.metric("正常退場數量", normal_count)
+        # 1. 頂列統計指標 (水平一列)
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("總資料點數", abs_total)
+        m2.metric("總採樣點數", sampling_pts)
+        m3.metric("管制點數", control_count)
+        m4.metric("建物數量", build_count)
+        m5.metric("難以採樣數量", hard_count)
+        m6.metric("正常退場數量", normal_count)
 
         st.divider()
 
-        # 2. 系統型網格現況統計
+        # 2. 系統型網格現況統計 (水平一列)
         st.subheader("🌐 系統型網格現況統計")
         grid_df = df_master.drop_duplicates('網格編號').copy()
         grid_df['網格監測頻率'] = grid_df['網格監測頻率'].fillna('無網格狀態').astype(str).str.strip()
@@ -121,22 +121,28 @@ if df_master is not None:
         g_total_active = g_cont + g_ext + g_exit
         g_none = len(grid_df) - g_total_active
 
-        g1, g2, g3, g4, g5 = st.columns(5)
-        g1.metric("持續", g_cont); g2.metric("延長", g_ext); g3.metric("退場", g_exit)
-        g4.metric("有效網格總數", g_total_active); g5.metric("無網格狀態", g_none)
+        g_cols = st.columns(5)
+        g_cols[0].metric("持續網格", g_cont)
+        g_cols[1].metric("延長網格", g_ext)
+        g_cols[2].metric("退場網格", g_exit)
+        g_cols[3].metric("有效網格合計", g_total_active)
+        g_cols[4].metric("無網格狀態", g_none)
 
         st.divider()
 
-        # 3. 個案型農地統計
+        # 3. 個案型農地統計 (修正階梯式排版：水平一列)
         st.subheader("📦 個案型農地現況統計")
+        # 排除系統型即為個案型
         case_data = df_master[~df_master['調查方式'].astype(str).str.contains('系統', na=False)].copy()
         c_map = {"增量":"持續", "延長":"延長", "正常":"退場", "難以採樣":"難以採樣", "管制":"管制", "建物":"建物"}
         case_data['顯示狀態'] = case_data['目前農地調查現況'].map(c_map).fillna(case_data['目前農地調查現況'])
         c_counts = case_data['顯示狀態'].value_counts()
         
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
-        for i, lab in enumerate(["持續", "延長", "退場", "管制", "難以採樣", "建物"]):
-            st.columns(6)[i].metric(lab, c_counts.get(lab, 0))
+        # 關鍵修正：先宣告 columns 容器，再依序填入
+        c_cols = st.columns(6)
+        c_labels = ["持續", "延長", "退場", "管制", "難以採樣", "建物"]
+        for i, lab in enumerate(c_labels):
+            c_cols[i].metric(lab, c_counts.get(lab, 0))
 
         st.divider()
 
@@ -149,60 +155,42 @@ if df_master is not None:
                 def highlight(row):
                     return ['background-color: #FFFFCC' if row.代表性 == '代表點' else '' for _ in row]
                 st.dataframe(grid_res.style.apply(highlight, axis=1), use_container_width=True)
-            else: st.warning("查無網格")
+            else: st.warning("查無此網格編號")
 
         st.divider()
 
-        # 5. 近三年樹狀圖 (深度演算版)
+        # 5. 近三年樹狀圖
         st.subheader("📊 近三年調查分佈 (樹狀圖)")
         years = [112, 113, 114]
         tree_cols = st.columns(3)
-        
         for i, y in enumerate(years):
             col_name = f"{y}狀態"
             if col_name in df_master.columns:
-                # 篩選該年度有調查的農地
                 y_df = df_master[df_master[col_name].notna()].copy()
-                
                 if not y_df.empty:
-                    # 核心演算：映射標籤
                     def map_tree_label(row):
                         status = str(row[col_name]).strip()
                         current_inv = str(row['目前農地調查現況']).strip()
-                        
                         if status == "監測":
                             if "增量" in current_inv: return "持續"
                             if "延長" in current_inv: return "延長"
-                            return "持續" # 預設
+                            return "持續"
                         elif status == "正常": return "退場"
-                        else: return status # 建物, 管制, 難以採樣
-                    
+                        else: return status
                     y_df['最終判定'] = y_df.apply(map_tree_label, axis=1)
-                    
-                    # 彙整繪圖數據
                     y_counts = y_df.groupby(['調查方式', '最終判定']).size().reset_index(name='筆數')
                     y_counts['根'] = f"{y}年 (共{len(y_df)}筆)"
-                    
-                    fig = px.treemap(
-                        y_counts, 
-                        path=['根', '調查方式', '最終判定'], 
-                        values='筆數',
-                        color='最終判定',
-                        color_discrete_map={
-                            '持續': '#FFB6C1', '延長': '#ADD8E6', '退場': '#90EE90',
-                            '管制': '#FF3333', '建物': '#D3D3D3', '難以採樣': '#E6E6FA'
-                        }
-                    )
+                    fig = px.treemap(y_counts, path=['根', '調查方式', '最終判定'], values='筆數', color='最終判定',
+                                     color_discrete_map={'持續':'#FFB6C1','延長':'#ADD8E6','退場':'#90EE90','管制':'#FF3333','建物':'#D3D3D3'})
                     tree_cols[i].plotly_chart(fig, use_container_width=True)
-                else:
-                    tree_cols[i].info(f"{y} 年無調查數據")
+                else: tree_cols[i].info(f"{y} 年無調查數據")
 
     # --- B. 資料庫查詢與下載 ---
     elif menu == "資料庫查詢與下載":
         st.title("📂 資料庫查詢與下載中心")
         t1, t2, t3 = st.tabs(["總表清單", "歷年調查結果", "同坵塊關聯"])
         with t1:
-            st.dataframe(df_master)
+            st.dataframe(df_master, use_container_width=True)
             towrite = io.BytesIO()
             df_master.to_excel(towrite, index=False, engine='xlsxwriter')
             st.download_button("📥 下載全量總表", data=towrite.getvalue(), file_name="農地總表.xlsx")
@@ -219,20 +207,50 @@ if df_master is not None:
                     rel = df_block[df_block['農地群組編號'] == gid]['農地地段地號'].tolist()
                     st.dataframe(df_master[df_master['地段地號'].isin(rel)])
 
-    # --- C. 新增年度調查 (保留邏輯) ---
+    # --- C. 新增年度調查結果 ---
     elif menu == "新增年度調查結果":
-        st.title("➕ 新增年度調查 (管理員專區)")
+        st.title("➕ 新增調查紀錄 (管理員後台)")
         pwd = st.sidebar.text_input("密碼", type="password")
         if pwd == ADMIN_PASSWORD:
-            st.success("通過驗證")
-            # 此處維持 7.0 錄入邏輯...
-        else: st.warning("請輸入密碼")
+            st.success("✅ 通過驗證")
+            # 此處保留您之前的錄入與判定邏輯代碼...
+        else: st.warning("請於左側輸入密碼以解鎖編輯權限")
 
-    # --- D. 空間地圖檢視 (保留邏輯) ---
+    # --- D. 空間地圖檢視 ---
     elif menu == "空間地圖檢視":
         st.title("🗺️ 空間地圖檢視")
-        # 此處維持 7.0 衛星影像邏輯...
-
+        # 建立衛星地圖
+        m = folium.Map(location=[24.05, 120.5], zoom_start=11, 
+                       tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 
+                       attr='Esri')
+        if gdf_grid is not None:
+            grid_status = df_master.drop_duplicates('網格編號')[['網格編號', '網格監測頻率']]
+            merged = gdf_grid.to_crs(epsg=4326).merge(grid_status, left_on='網格號', right_on='網格編號', how='left')
+            def get_c(f):
+                f = str(f)
+                return '#FFB6C1' if '持續' in f else '#ADD8E6' if '延長' in f else '#90EE90' if '退場' in f else '#F8F8F8'
+            folium.GeoJson(merged, style_function=lambda x: {
+                'fillColor': get_c(x['properties'].get('網格監測頻率')),
+                'color': 'white', 'weight': 1, 'fillOpacity': 0.4
+            }).add_to(m)
+        
+        # 繪製點位
+        sample = df_master.sample(min(800, len(df_master)))
+        for _, r in sample.iterrows():
+            try:
+                lon, lat = transformer_to_wgs84.transform(r['TWD97_X'], r['TWD97_Y'])
+                s = 4 if "個案" in str(r['調查方式']) else 3
+                mon_s = str(r['農地監測狀態'])
+                if mon_s == "管制": s = 6; c = "red"
+                elif mon_s == "建物": s = 6; c = "black"
+                elif mon_s == "難以採樣": s = 6; c = "purple"
+                elif str(r['代表性']) == "備用點": s = 4; c = "white"
+                else:
+                    inv = str(r['目前農地調查現況'])
+                    c = "red" if "增量" in inv else "blue" if "延長" in inv else "green"
+                folium.RegularPolygonMarker(location=[lat, lon], number_of_sides=s, radius=6, color=c, fill=True, popup=f"{r['地段地號']}").add_to(m)
+            except: continue
+        st_folium(m, width=1100, height=700)
 else:
     st.error("❌ 讀取 Excel 失敗")
 
