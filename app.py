@@ -428,23 +428,44 @@ if df_master is not None:
         for _, r in current_selection.iterrows():
             try:
                 lon, lat = transformer_to_wgs84.transform(r['TWD97_X'], r['TWD97_Y'])
-                status, cat = str(r['目前農地調查現況']), str(r['計畫類別'])
-                # 圖示邏輯
-                sides = 3 if "系統" in cat else 4
-                color = "red" if "增量" in status else "blue"
-                folium.RegularPolygonMarker(location=[lat, lon], number_of_sides=sides, radius=8, color=color, fill=True, fill_opacity=0.9,
-                                            popup=f"地號: {r['地段地號']}").add_to(m_plan)
+                status = str(r['目前農地調查現況'])
+                category = str(r['計畫類別'])
+                
+                # 形狀顏色判定邏輯
+                sides = 4; color = "blue" # 預設
+                if "系統" in category:
+                    sides = 3 # 三角形
+                    color = "red" if "增量" in status else "blue"
+                else:
+                    sides = 4 # 正方形
+                    color = "yellow" if "增量" in status else "green"
+                
+                folium.RegularPolygonMarker(
+                    location=[lat, lon], number_of_sides=sides, radius=8,
+                    color=color, fill=True, fill_opacity=0.9,
+                    popup=f"地號: {r['地段地號']}<br>網格: {r['網格編號']}<br>狀態: {status}"
+                ).add_to(m_plan)
             except: continue
-        st_folium(m_plan, width=1100, height=650, key="plan_map")
-
+        
+        st_folium(m_plan, width=1100, height=600, key="plan_map")
         # 存檔按鈕
-        if st.button("💾 凍結名單並準備檔案"):
-            st.session_state.saved_plan = current_selection.drop(columns=['留用'])
-            st.success("名單已儲存！可於下方下載。")
+        st.divider()
+        if st.button("💾 確認名單並產生儲存檔案"):
+            st.session_state.saved_plan = current_selection.drop(columns=['選擇'])
+            st.success("名單已儲存！請見下方區域。")
+
         if st.session_state.saved_plan is not None:
+            st.subheader(f"📄 已儲存之 {target_year} 年度正式計畫名單")
+            st.data_editor(st.session_state.saved_plan, use_container_width=True)
+            
             towrite = io.BytesIO()
             st.session_state.saved_plan.to_excel(towrite, index=False, engine='xlsxwriter')
-            st.download_button("📥 下載此調查計畫 Excel", data=towrite.getvalue(), file_name=f"彰化定監計畫_{target_year}.xlsx")
+            st.download_button(f"📥 下載 {target_year} 計畫 Excel", data=towrite.getvalue(), file_name=f"彰化定監計畫_{target_year}.xlsx")
+
+        if st.button("🔄 重置篩選 (清空所有手動排除)"):
+            st.session_state.excluded_lots = []
+            st.rerun()
+
     # --- D. 新增結果 ---
     elif menu == "新增年度調查結果":
         st.title("➕ 錄入年度數據與 DA 判定")
@@ -486,6 +507,7 @@ if df_master is not None:
         st_folium(m, width=1100, height=700)
 else:
     st.error("❌ Excel 載入失敗")
+
 
 
 
