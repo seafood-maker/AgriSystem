@@ -297,99 +297,91 @@ if df_master is not None:
 
     # --- C. 新年度調查點篩選名單 (重點演算法) ---
     elif menu == "新年度調查點篩選名單":
-        st.title("📅 年度調查計畫決策系統")
+        st.title("📅 年度調查計畫決策篩選")
         
-        # 1. 參數填寫區
-        col_set1, col_set2 = st.columns(2)
-        with col_set1:
+        # 1. 參數設定
+        c_set1, c_set2 = st.columns(2)
+        with c_set1:
             target_year = st.number_input("1. 設定計畫目標年度 (民國)", value=get_minguo_year()+1)
-        with col_set2:
-            quota = st.number_input("2. 設定本年度預計調查總量 (筆數)", value=500, step=50)
+        with c_set2:
+            quota = st.number_input("2. 設定本年度預計調查總配額 (筆數)", value=500, step=50)
 
         st.divider()
 
-        # 2. 演算法運算引擎
-        df_calc = df_master.copy()
+        # 2. 演算法核心 logic
+        # P1: 持續型 (網格 + 個案)
+        # P2: 延長型 (網格代表點)
+        # P3: 延長型 (個案獨立)
         
-        # --- A. 系統型網格篩選 (分開評估) ---
-        sys_results = []
-        all_grids = df_calc[df_calc['調查方式'].str.contains('系統', na=False)]['網格編號'].unique()
+        # --- A. 系統型網格篩選 ---
+        sys_final_list = []
+        all_grids = df_master[df_master['調查方式'].str.contains('系統', na=False)]['網格編號'].unique()
         
-        for g_id in all_grids:
-            g_data = df_calc[df_calc['網格編號'] == g_id]
+        for gid in all_grids:
+            g_data = df_master[df_master['網格編號'] == gid]
             g_freq = str(g_data['網格監測頻率'].iloc[0])
             last_y = g_data['最後調查年分'].max()
             
-            # 判斷網格是否入選
-            is_grid_selected = False
-            priority_rank = 99
+            prio = 99
+            if g_freq == '持續': prio = 1
+            elif g_freq == '延長' and (target_year - last_y >= 2): prio = 2
             
-            if g_freq == '持續': 
-                is_grid_selected = True; priority_rank = 1 # 優先順位 1
-            elif g_freq == '延長' and (target_year - last_y >= 2):
-                is_grid_selected = True; priority_rank = 2 # 優先順位 2
-            
-            if is_grid_selected:
-                # 篩選代表點 (過濾掉失效點)
+            if prio < 99:
                 reps = g_data[g_data['代表性'] == '代表點']
+                # 排除失效點
                 valid_reps = reps[~reps['農地監測狀態'].isin(['管制', '建物', '難以採樣'])]
                 
-                # 遞補邏輯：若代表點不足 3 筆，從備用點按序號補齊
+                # 遞補邏輯：不滿 3 筆則抓備用
                 if len(valid_reps) < 3:
-                    backup_pool = g_data[g_data['代表性'] == '備用點'].sort_values('農地序號')
+                    backups = g_data[g_data['代表性'] == '備用點'].sort_values('農地序號')
                     needed = 3 - len(valid_reps)
-                    top_backups = backup_pool.head(needed).copy()
-                    top_backups['篩選備註'] = '備用遞補'
-                    valid_reps = pd.concat([valid_reps, top_backups])
+                    added = backups.head(needed).copy()
+                    added['篩選備註'] = '備用遞補'
+                    valid_reps = pd.concat([valid_reps, added])
                 
-                valid_reps['優先權重'] = priority_rank
+                valid_reps['優先權重'] = prio
                 valid_reps['計畫類別'] = f'系統型網格 ({g_freq})'
-                sys_results.append(valid_reps)
+                sys_final_list.append(valid_reps)
 
-        # --- B. 個案型農地篩選 (分開評估) ---
-        case_all = df_calc[~df_calc['調查方式'].str.contains('系統', na=False)].copy()
-        # 排除已退場、管制、建物的農地
+        # --- B. 個案型篩選 ---
+        case_all = df_master[~df_master['調查方式'].str.contains('系統', na=False)].copy()
         case_active = case_all[~case_all['農地監測狀態'].isin(['管制', '建物', '正常'])]
         
-        def case_filter(row):
-            status = str(row['目前農地調查現況'])
-            last = row['最後調查年分']
-            freq = row['延長頻率']
-            if status == '增量': return 1 # 優先順位 1
-            if status == '延長' and (target_year - last >= freq): return 3 # 優先順位 3
+        def case_algo(row):
+            if str(row['目前農地調查現況']) == '增量': return 1
+            if str(row['目前農地調查現況']) == '延長' and (target_year - row['最後調查年分'] >= row['延長頻率']): return 3
             return 99
 
-        case_active['優先權重'] = case_active.apply(case_filter, axis=1)
+        case_active['優先權重'] = case_active.apply(case_algo, axis=1)
         case_final = case_active[case_active['優先權重'] < 99].copy()
         case_final['計畫類別'] = '個案型農地'
         case_final['篩選備註'] = '獨立判定'
 
-        # 3. 匯總與排序
-        all_plan = pd.concat([pd.concat(sys_results) if sys_results else pd.DataFrame(), case_final])
-        all_plan = all_plan.sort_values(by=['優先權重', '網格編號', '農地序號'])
+        # 3. 匯總排序與配額控管
+        full_pool = pd.concat([pd.concat(sys_final_list) if sys_final_list else pd.DataFrame(), case_final])
+        full_pool = full_pool.sort_values(by=['優先權重', '網格編號', '農地序號'])
         
-        # 4. 配額截斷
-        final_list = all_plan.head(int(quota))
+        # 錄取名單
+        final_selected = full_pool.head(int(quota))
 
-        # 5. 介面呈現
-        st.subheader(f"🎯 {target_year} 年度擬定調查清單")
-        
+        # 4. 呈現結果
+        st.subheader(f"🎯 {target_year} 年度建議調查清單")
         st.markdown(f"""
-        <div class="filter-result">
-        <b>篩選統計結果：</b><br>
-        - 總需求筆數：{len(all_plan)} 筆<br>
-        - <b>本年度配額錄取：{len(final_list)} 筆</b> (依優先順位排列)<br>
-        - 尚餘未排入點位：{max(0, len(all_plan) - int(quota))} 筆
+        <div class="filter-card">
+        <b>篩選結果統計：</b><br>
+        - 符合演算法總需求：{len(full_pool)} 筆<br>
+        - <b>依配額錄取：{len(final_selected)} 筆</b><br>
+        - 優先級排序：P1 持續(網格+個案) > P2 延長(網格) > P3 延長(個案)
         </div>
         """, unsafe_allow_html=True)
+        
+        st.dataframe(final_selected[['優先權重', '網格編號', '地段地號', '農地序號', '計畫類別', '目前農地調查現況', '篩選備註']], use_container_width=True)
+        
+        # 下載按鈕
+        tw = io.BytesIO()
+        final_selected.to_excel(tw, index=False, engine='xlsxwriter')
+        st.download_button(f"📥 下載 {target_year} 調查計畫", data=tw.getvalue(), file_name=f"彰化計畫_{target_year}.xlsx")
 
-        st.write("---")
-        st.dataframe(final_list[['優先權重', '網格編號', '地段地號', '農地序號', '計畫類別', '目前農地調查現況', '最後調查年分', '篩選備註']], use_container_width=True)
-
-        # 下載
-        towrite = io.BytesIO()
-        final_list.to_excel(towrite, index=False, engine='xlsxwriter')
-        st.download_button(f"📥 下載 {target_year} 調查計畫清單", data=towrite.getvalue(), file_name=f"彰化定監_{target_year}_計畫名單.xlsx")
     # --- D. 新增年度調查結果 ---
     elif menu == "新增年度調查結果":
         st.title("➕ 錄入採樣數據與 DA 判定")
@@ -445,6 +437,7 @@ if df_master is not None:
         st_folium(m, width=1100, height=700)
 else:
     st.error("❌ 讀取資料庫失敗，請確認 Excel 檔案與分頁正確。")
+
 
 
 
