@@ -206,32 +206,32 @@ def init_db(engine):
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS blocks (
             block_id TEXT NOT NULL,
-            lot_no TEXT NOT NULL,
+            地段地號 TEXT NOT NULL,
             is_rep BOOLEAN DEFAULT FALSE,
-            PRIMARY KEY (block_id, lot_no)
+            PRIMARY KEY (block_id, 地段地號)
         );
         """))
 
         # ---------- lands (base create) ----------
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS lands (
-            lot_no TEXT PRIMARY KEY,
-            sgm_no TEXT,
+            地段地號 TEXT PRIMARY KEY,
+            sSGM編號 TEXT,
             land_serial TEXT,
-            grid_id TEXT,
-            township TEXT,
-            survey_method TEXT,
-            rep_role TEXT,
-            water_type TEXT,
+            網格編號 TEXT,
+            鄉鎮市 TEXT,
+            調查方式 TEXT,
+            代表性 TEXT,
+            用水種類 TEXT,
 
             coord_x DOUBLE PRECISION,
             coord_y DOUBLE PRECISION,
 
             initial_metals JSONB,
-            current_metal_result TEXT,
-            admin_status TEXT,
-            freq TEXT,
-            last_year INTEGER,
+            農地監測狀態 TEXT,
+            農地監測狀態 TEXT,
+            網格監測頻率 TEXT,
+            最後調查年分 INTEGER,
             year_status JSONB,
 
             updated_at TIMESTAMP DEFAULT NOW()
@@ -239,20 +239,20 @@ def init_db(engine):
         """))
 
         # ✅ 補欄位：避免你 DB 是舊表缺欄位造成 ProgrammingError
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS sgm_no TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS sSGM編號 TEXT;"))
         conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS land_serial TEXT;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS grid_id TEXT;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS township TEXT;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS survey_method TEXT;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS rep_role TEXT;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS water_type TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 網格編號 TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 鄉鎮市 TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 調查方式 TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 代表性 TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 用水種類 TEXT;"))
         conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS coord_x DOUBLE PRECISION;"))
         conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS coord_y DOUBLE PRECISION;"))
         conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS initial_metals JSONB;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS current_metal_result TEXT;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS admin_status TEXT;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS freq TEXT;"))
-        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS last_year INTEGER;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 農地監測狀態 TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 農地監測狀態 TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 網格監測頻率 TEXT;"))
+        conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS 最後調查年分 INTEGER;"))
         conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS year_status JSONB;"))
         conn.execute(text("ALTER TABLE lands ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();"))
 
@@ -260,7 +260,7 @@ def init_db(engine):
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS samples (
             sample_id SERIAL PRIMARY KEY,
-            lot_no TEXT NOT NULL,
+            地段地號 TEXT NOT NULL,
             year INTEGER NOT NULL,
             sample_date DATE,
 
@@ -274,9 +274,9 @@ def init_db(engine):
             total JSONB,
             used_total BOOLEAN DEFAULT FALSE,
 
-            admin_status TEXT,
+            農地監測狀態 TEXT,
             metal_result TEXT,
-            freq TEXT,
+            網格監測頻率 TEXT,
 
             da_pct JSONB,
             er JSONB,
@@ -293,9 +293,9 @@ def init_db(engine):
         conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS xrf JSONB;"))
         conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS total JSONB;"))
         conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS used_total BOOLEAN DEFAULT FALSE;"))
-        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS admin_status TEXT;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS 農地監測狀態 TEXT;"))
         conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS metal_result TEXT;"))
-        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS freq TEXT;"))
+        conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS 網格監測頻率 TEXT;"))
         conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS da_pct JSONB;"))
         conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS er JSONB;"))
         conn.execute(text("ALTER TABLE samples ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();"))
@@ -303,17 +303,17 @@ def init_db(engine):
         # ---------- indexes ----------
         conn.execute(text("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_samples_lot_year_unique
-        ON samples(lot_no, year);
+        ON samples(地段地號, year);
         """))
 
         conn.execute(text("""
-        CREATE INDEX IF NOT EXISTS idx_lands_grid_id
-        ON lands(grid_id);
+        CREATE INDEX IF NOT EXISTS idx_lands_網格編號
+        ON lands(網格編號);
         """))
 
         conn.execute(text("""
-        CREATE INDEX IF NOT EXISTS idx_lands_admin_status
-        ON lands(admin_status);
+        CREATE INDEX IF NOT EXISTS idx_lands_農地監測狀態
+        ON lands(農地監測狀態);
         """))
 
 
@@ -334,7 +334,7 @@ def load_excel_all(path: str) -> Dict[str, pd.DataFrame]:
 # - ER：濃度 / 監測標準
 # - DA%：((本次 - baseline) / baseline) * 100
 # - metal_result：管制 / 增量 / 延長 / 正常
-# - freq：管制 / 持續 / 延長 / 退場
+# - 網格監測頻率：管制 / 持續 / 延長 / 退場
 # =========================================================
 class RulesEngine:
     def __init__(self, standards: Dict[str, Dict[str, float]]):
@@ -386,7 +386,7 @@ class RulesEngine:
         # 4) 其餘 ER>1 -> 延長
         return "延長"
 
-    def metal_result_to_freq(self, metal_result: str) -> str:
+    def metal_result_to_網格監測頻率(self, metal_result: str) -> str:
         mapping = {
             "管制": "管制",
             "增量": "持續",
@@ -425,23 +425,23 @@ def db_fetch_kpis(engine) -> Dict[str, int]:
         total = conn.execute(text("SELECT COUNT(*) FROM lands;")).scalar() or 0
         sample_points = conn.execute(text("""
             SELECT COUNT(*) FROM lands
-            WHERE COALESCE(NULLIF(TRIM(rep_role), ''), '') <> '';
+            WHERE COALESCE(NULLIF(TRIM(代表性), ''), '') <> '';
         """)).scalar() or 0
         control = conn.execute(text("""
             SELECT COUNT(*) FROM lands
-            WHERE admin_status='管制' OR current_metal_result='管制';
+            WHERE 農地監測狀態='管制' OR 農地監測狀態='管制';
         """)).scalar() or 0
         building = conn.execute(text("""
             SELECT COUNT(*) FROM lands
-            WHERE admin_status='建物' OR current_metal_result='建物';
+            WHERE 農地監測狀態='建物' OR 農地監測狀態='建物';
         """)).scalar() or 0
         hard = conn.execute(text("""
             SELECT COUNT(*) FROM lands
-            WHERE admin_status IN ('難以採樣','無法採樣') OR current_metal_result IN ('難以採樣','無法採樣');
+            WHERE 農地監測狀態 IN ('難以採樣','無法採樣') OR 農地監測狀態 IN ('難以採樣','無法採樣');
         """)).scalar() or 0
         normal_exit = conn.execute(text("""
             SELECT COUNT(*) FROM lands
-            WHERE admin_status='正常' OR current_metal_result='正常';
+            WHERE 農地監測狀態='正常' OR 農地監測狀態='正常';
         """)).scalar() or 0
 
     return dict(
@@ -464,59 +464,59 @@ def db_search_land(engine, query: str) -> pd.DataFrame:
         df = pd.read_sql(text("""
             SELECT *
             FROM lands
-            WHERE lot_no ILIKE :q OR sgm_no ILIKE :q
-            ORDER BY grid_id, lot_no
+            WHERE 地段地號 ILIKE :q OR sSGM編號 ILIKE :q
+            ORDER BY 網格編號, 地段地號
             LIMIT 200;
         """), conn, params={"q": f"%{q}%"})
     return df
 
 
-def db_fetch_land_by_lot(engine, lot_no: str) -> Optional[Dict[str, Any]]:
+def db_fetch_land_by_lot(engine, 地段地號: str) -> Optional[Dict[str, Any]]:
     if engine is None:
         return None
     with engine.begin() as conn:
-        row = conn.execute(text("SELECT * FROM lands WHERE lot_no=:lot LIMIT 1;"), {"lot": lot_no}).mappings().first()
+        row = conn.execute(text("SELECT * FROM lands WHERE 地段地號=:lot LIMIT 1;"), {"lot": 地段地號}).mappings().first()
     return dict(row) if row else None
 
 
-def db_fetch_last_sample(engine, lot_no: str) -> Optional[Dict[str, Any]]:
+def db_fetch_last_sample(engine, 地段地號: str) -> Optional[Dict[str, Any]]:
     if engine is None:
         return None
     with engine.begin() as conn:
         row = conn.execute(text("""
             SELECT *
             FROM samples
-            WHERE lot_no=:lot
+            WHERE 地段地號=:lot
             ORDER BY year DESC, created_at DESC
             LIMIT 1;
-        """), {"lot": lot_no}).mappings().first()
+        """), {"lot": 地段地號}).mappings().first()
     return dict(row) if row else None
 
 
-def db_fetch_first_sample(engine, lot_no: str) -> Optional[Dict[str, Any]]:
+def db_fetch_first_sample(engine, 地段地號: str) -> Optional[Dict[str, Any]]:
     if engine is None:
         return None
     with engine.begin() as conn:
         row = conn.execute(text("""
             SELECT *
             FROM samples
-            WHERE lot_no=:lot
+            WHERE 地段地號=:lot
             ORDER BY year ASC, created_at ASC
             LIMIT 1;
-        """), {"lot": lot_no}).mappings().first()
+        """), {"lot": 地段地號}).mappings().first()
     return dict(row) if row else None
 
 
-def db_fetch_samples(engine, lot_no: str) -> pd.DataFrame:
+def db_fetch_samples(engine, 地段地號: str) -> pd.DataFrame:
     if engine is None:
         return pd.DataFrame()
     with engine.begin() as conn:
         df = pd.read_sql(text("""
-            SELECT year, sample_date, admin_status, metal_result, freq, xrf, total, used_total, da_pct, er, created_at
+            SELECT year, sample_date, 農地監測狀態, metal_result, 網格監測頻率, xrf, total, used_total, da_pct, er, created_at
             FROM samples
-            WHERE lot_no=:lot
+            WHERE 地段地號=:lot
             ORDER BY year DESC, created_at DESC;
-        """), conn, params={"lot": lot_no})
+        """), conn, params={"lot": 地段地號})
     return df
 
 
@@ -600,14 +600,14 @@ def admin_import_excel_to_db(engine):
                 conn.execute(text("DELETE FROM blocks;"))
                 for _, r in df_blk2.iterrows():
                     block_id = nstr(r.get(gcol))
-                    lot_no = nstr(r.get(lcol))
+                    地段地號 = nstr(r.get(lcol))
                     is_rep = to_bool_rep(r.get(rcol))
                     conn.execute(text("""
-                        INSERT INTO blocks (block_id, lot_no, is_rep)
+                        INSERT INTO blocks (block_id, 地段地號, is_rep)
                         VALUES (:b, :l, :r)
-                        ON CONFLICT (block_id, lot_no) DO UPDATE
+                        ON CONFLICT (block_id, 地段地號) DO UPDATE
                         SET is_rep = EXCLUDED.is_rep;
-                    """), {"b": block_id, "l": lot_no, "r": is_rep})
+                    """), {"b": block_id, "l": 地段地號, "r": is_rep})
 
             # -------- lands --------
             if SHEET_MASTER not in data:
@@ -643,14 +643,14 @@ def admin_import_excel_to_db(engine):
 
             # 若 Excel 還沒新增「農地監測狀態」欄，這裡自動推一個
             if "農地監測狀態" not in df.columns:
-                def infer_admin_status(cur):
+                def infer_農地監測狀態(cur):
                     cur = nstr(cur)
                     if cur in ["管制", "建物", "難以採樣", "無法採樣", "正常"]:
                         return "難以採樣" if cur == "無法採樣" else cur
                     if cur in ["增量", "延長"]:
                         return "監測"
                     return ""
-                df["農地監測狀態"] = df["目前農地調查現況"].apply(infer_admin_status)
+                df["農地監測狀態"] = df["目前農地調查現況"].apply(infer_農地監測狀態)
 
             # 最後調查年分若空，用 year_cols 最新非空推
             if "最後調查年分" not in df.columns:
@@ -658,7 +658,7 @@ def admin_import_excel_to_db(engine):
             if "網格監測頻率" not in df.columns:
                 df["網格監測頻率"] = ""
 
-            def infer_last_year(row) -> Optional[int]:
+            def infer_最後調查年分(row) -> Optional[int]:
                 if pd.notna(row.get("最後調查年分")) and str(row.get("最後調查年分")).strip() != "":
                     try:
                         return int(float(row.get("最後調查年分")))
@@ -673,12 +673,12 @@ def admin_import_excel_to_db(engine):
                             latest = y
                 return latest
 
-            df["最後調查年分"] = df.apply(infer_last_year, axis=1)
+            df["最後調查年分"] = df.apply(infer_最後調查年分, axis=1)
 
             with engine.begin() as conn:
                 for _, r in df.iterrows():
-                    lot_no = nstr(r.get("地段地號"))
-                    if not lot_no:
+                    地段地號 = nstr(r.get("地段地號"))
+                    if not 地段地號:
                         continue
 
                     initial_metals = {}
@@ -696,53 +696,53 @@ def admin_import_excel_to_db(engine):
                             year_status[y] = v
 
                     payload = {
-                        "lot_no": lot_no,
-                        "sgm_no": nstr(r.get("SGM編號")),
+                        "地段地號": 地段地號,
+                        "sSGM編號": nstr(r.get("SGM編號")),
                         "land_serial": nstr(r.get("農地序號")),
-                        "grid_id": nstr(r.get("網格編號")),
-                        "township": nstr(r.get("鄉鎮市")),
-                        "survey_method": nstr(r.get("調查方式")),
-                        "rep_role": nstr(r.get("代表性")),
-                        "water_type": nstr(r.get("用水種類")),
+                        "網格編號": nstr(r.get("網格編號")),
+                        "鄉鎮市": nstr(r.get("鄉鎮市")),
+                        "調查方式": nstr(r.get("調查方式")),
+                        "代表性": nstr(r.get("代表性")),
+                        "用水種類": nstr(r.get("用水種類")),
                         "coord_x": safe_float(r.get("TWD97_X")),
                         "coord_y": safe_float(r.get("TWD97_Y")),
                         "initial_metals": json.dumps(initial_metals, ensure_ascii=False),
-                        "current_metal_result": nstr(r.get("目前農地調查現況")),
-                        "admin_status": nstr(r.get("農地監測狀態")),
-                        "freq": nstr(r.get("網格監測頻率")),
-                        "last_year": safe_float(r.get("最後調查年分")),
+                        "農地監測狀態": nstr(r.get("目前農地調查現況")),
+                        "農地監測狀態": nstr(r.get("農地監測狀態")),
+                        "網格監測頻率": nstr(r.get("網格監測頻率")),
+                        "最後調查年分": safe_float(r.get("最後調查年分")),
                         "year_status": json.dumps(year_status, ensure_ascii=False),
                     }
 
                     conn.execute(text("""
                         INSERT INTO lands (
-                            lot_no, sgm_no, land_serial, grid_id, township, survey_method,
-                            rep_role, water_type, coord_x, coord_y,
-                            initial_metals, current_metal_result, admin_status, freq, last_year, year_status, updated_at
+                            地段地號, sSGM編號, land_serial, 網格編號, 鄉鎮市, 調查方式,
+                            代表性, 用水種類, coord_x, coord_y,
+                            initial_metals, 農地監測狀態, 農地監測狀態, 網格監測頻率, 最後調查年分, year_status, updated_at
                         )
                         VALUES (
-                            :lot_no, :sgm_no, :land_serial, :grid_id, :township, :survey_method,
-                            :rep_role, :water_type, :coord_x, :coord_y,
-                            CAST(:initial_metals AS JSONB), :current_metal_result, :admin_status, :freq,
-                            CASE WHEN :last_year IS NULL THEN NULL ELSE CAST(:last_year AS INTEGER) END,
+                            :地段地號, :sSGM編號, :land_serial, :網格編號, :鄉鎮市, :調查方式,
+                            :代表性, :用水種類, :coord_x, :coord_y,
+                            CAST(:initial_metals AS JSONB), :農地監測狀態, :農地監測狀態, :網格監測頻率,
+                            CASE WHEN :最後調查年分 IS NULL THEN NULL ELSE CAST(:最後調查年分 AS INTEGER) END,
                             CAST(:year_status AS JSONB),
                             NOW()
                         )
-                        ON CONFLICT (lot_no) DO UPDATE SET
-                            sgm_no=EXCLUDED.sgm_no,
+                        ON CONFLICT (地段地號) DO UPDATE SET
+                            sSGM編號=EXCLUDED.sSGM編號,
                             land_serial=EXCLUDED.land_serial,
-                            grid_id=EXCLUDED.grid_id,
-                            township=EXCLUDED.township,
-                            survey_method=EXCLUDED.survey_method,
-                            rep_role=EXCLUDED.rep_role,
-                            water_type=EXCLUDED.water_type,
+                            網格編號=EXCLUDED.網格編號,
+                            鄉鎮市=EXCLUDED.鄉鎮市,
+                            調查方式=EXCLUDED.調查方式,
+                            代表性=EXCLUDED.代表性,
+                            用水種類=EXCLUDED.用水種類,
                             coord_x=EXCLUDED.coord_x,
                             coord_y=EXCLUDED.coord_y,
                             initial_metals=EXCLUDED.initial_metals,
-                            current_metal_result=EXCLUDED.current_metal_result,
-                            admin_status=EXCLUDED.admin_status,
-                            freq=EXCLUDED.freq,
-                            last_year=EXCLUDED.last_year,
+                            農地監測狀態=EXCLUDED.農地監測狀態,
+                            農地監測狀態=EXCLUDED.農地監測狀態,
+                            網格監測頻率=EXCLUDED.網格監測頻率,
+                            最後調查年分=EXCLUDED.最後調查年分,
                             year_status=EXCLUDED.year_status,
                             updated_at=NOW();
                     """), payload)
@@ -766,9 +766,9 @@ def page_blocks_manage(engine):
 
     with engine.begin() as conn:
         df = pd.read_sql(text("""
-            SELECT block_id, lot_no, is_rep
+            SELECT block_id, 地段地號, is_rep
             FROM blocks
-            ORDER BY block_id, lot_no;
+            ORDER BY block_id, 地段地號;
         """), conn)
 
     st.dataframe(df, use_container_width=True, height=380)
@@ -778,19 +778,19 @@ def page_blocks_manage(engine):
     with c1:
         new_block = st.text_input("block_id（農地群組編號）")
     with c2:
-        new_lot = st.text_input("lot_no（地段地號）")
+        new_lot = st.text_input("地段地號（地段地號）")
     with c3:
         new_rep = st.selectbox("是否代表點", ["否", "是"], index=0)
 
     if st.button("新增到 blocks"):
         if not new_block.strip() or not new_lot.strip():
-            st.error("block_id 與 lot_no 不能空白")
+            st.error("block_id 與 地段地號 不能空白")
         else:
             with engine.begin() as conn:
                 conn.execute(text("""
-                    INSERT INTO blocks (block_id, lot_no, is_rep)
+                    INSERT INTO blocks (block_id, 地段地號, is_rep)
                     VALUES (:b,:l,:r)
-                    ON CONFLICT (block_id, lot_no) DO UPDATE
+                    ON CONFLICT (block_id, 地段地號) DO UPDATE
                     SET is_rep=EXCLUDED.is_rep;
                 """), {"b": new_block.strip(), "l": new_lot.strip(), "r": (new_rep == "是")})
             st.success("已新增/更新")
@@ -801,27 +801,27 @@ def page_blocks_manage(engine):
     bid = st.selectbox("選擇 block_id", [""] + block_ids)
     if bid:
         sub = df[df["block_id"] == bid].copy()
-        lots = sub["lot_no"].tolist()
-        rep_lot = st.selectbox("指定代表 lot_no", lots)
+        lots = sub["地段地號"].tolist()
+        rep_lot = st.selectbox("指定代表 地段地號", lots)
         if st.button("設定代表點"):
             with engine.begin() as conn:
                 conn.execute(text("UPDATE blocks SET is_rep=FALSE WHERE block_id=:b;"), {"b": bid})
                 conn.execute(text("""
                     UPDATE blocks SET is_rep=TRUE
-                    WHERE block_id=:b AND lot_no=:l;
+                    WHERE block_id=:b AND 地段地號=:l;
                 """), {"b": bid, "l": rep_lot})
             st.success("代表點已更新")
             st.rerun()
 
-    st.markdown("### 🗑️ 刪除某筆 (block_id, lot_no)")
+    st.markdown("### 🗑️ 刪除某筆 (block_id, 地段地號)")
     del_block = st.text_input("要刪除的 block_id")
-    del_lot = st.text_input("要刪除的 lot_no")
+    del_lot = st.text_input("要刪除的 地段地號")
     if st.button("刪除"):
         if not del_block.strip() or not del_lot.strip():
-            st.error("block_id 與 lot_no 不能空白")
+            st.error("block_id 與 地段地號 不能空白")
         else:
             with engine.begin() as conn:
-                conn.execute(text("DELETE FROM blocks WHERE block_id=:b AND lot_no=:l;"),
+                conn.execute(text("DELETE FROM blocks WHERE block_id=:b AND 地段地號=:l;"),
                              {"b": del_block.strip(), "l": del_lot.strip()})
             st.success("已刪除")
             st.rerun()
@@ -859,8 +859,8 @@ def page_add_annual(engine):
 
     lot_selected = None
     if not df.empty:
-        options = df["lot_no"].tolist()
-        lot_selected = st.selectbox("選擇一筆農地（lot_no）", options)
+        options = df["地段地號"].tolist()
+        lot_selected = st.selectbox("選擇一筆農地（地段地號）", options)
 
     if not lot_selected:
         st.info("請先搜尋並選擇一筆農地")
@@ -877,7 +877,7 @@ def page_add_annual(engine):
         year = st.number_input("調查年度（民國）", min_value=90, max_value=200, value=(now_tw().year - 1911))
         sample_date = st.date_input("採樣日期", value=now_tw().date())
     with c2:
-        admin_status = st.selectbox("本次現勘狀態", ["監測", "正常", "管制", "建物", "難以採樣"], index=0)
+        農地監測狀態 = st.selectbox("本次現勘狀態", ["監測", "正常", "管制", "建物", "難以採樣"], index=0)
     with c3:
         coord_x = st.number_input("採樣點 X（TWD97）", value=float(land.get("coord_x") or 0.0), format="%.3f")
         coord_y = st.number_input("採樣點 Y（TWD97）", value=float(land.get("coord_y") or 0.0), format="%.3f")
@@ -933,14 +933,14 @@ def page_add_annual(engine):
     da = rules.compute_da_pct(chosen, baseline)
     metal_result = rules.decide_metal_result(chosen, er, da)
 
-    # 但若現勘是 建物/難以採樣/管制 → 直接把 lands/admin_status 走現勘結果
+    # 但若現勘是 建物/難以採樣/管制 → 直接把 lands/農地監測狀態 走現勘結果
     # 金屬結果 metal_result 仍存 samples（便於追溯），但主檔現況以現勘優先
-    freq = rules.metal_result_to_freq(metal_result)
+    網格監測頻率 = rules.metal_result_to_網格監測頻率(metal_result)
 
     st.markdown("### 4) 系統自動判定結果（預覽）")
     cA, cB, cC = st.columns(3)
     cA.metric("金屬判定（metal_result）", metal_result)
-    cB.metric("對應策略頻率（freq）", freq)
+    cB.metric("對應策略頻率（網格監測頻率）", 網格監測頻率)
     cC.metric("是否使用全量", "是" if used_total else "否")
 
     # 座標偏差提醒
@@ -951,7 +951,7 @@ def page_add_annual(engine):
     # 加入暫存清單
     if st.button("➕ 加入本次暫存清單"):
         st.session_state["pending_samples"].append({
-            "lot_no": lot_selected,
+            "地段地號": lot_selected,
             "year": int(year),
             "sample_date": str(sample_date),
             "coord_x": float(coord_x),
@@ -961,9 +961,9 @@ def page_add_annual(engine):
             "xrf": {metal_name_to_key(k): float(xrf_vals[k]) for k in METALS},
             "total": {metal_name_to_key(k): safe_float(total_vals[k]) for k in METALS} if used_total else {},
             "used_total": bool(used_total),
-            "admin_status": admin_status,
+            "農地監測狀態": 農地監測狀態,
             "metal_result": metal_result,
-            "freq": freq,
+            "網格監測頻率": 網格監測頻率,
             "da_pct": {metal_name_to_key(k): da.get(k) for k in METALS},
             "er": {metal_name_to_key(k): er.get(k) for k in METALS},
             "update_master_coord": (dist is not None and dist > 3.0),
@@ -986,25 +986,25 @@ def page_add_annual(engine):
             if st.button("📤 上傳暫存清單到 DB（寫入 samples + 更新 lands）"):
                 with engine.begin() as conn:
                     for rec in pending:
-                        # 1) upsert samples（同 lot_no+year）
+                        # 1) upsert samples（同 地段地號+year）
                         conn.execute(text("""
                             INSERT INTO samples (
-                                lot_no, year, sample_date,
+                                地段地號, year, sample_date,
                                 coord_x, coord_y,
                                 photo_site, photo_sample,
                                 xrf, total, used_total,
-                                admin_status, metal_result, freq,
+                                農地監測狀態, metal_result, 網格監測頻率,
                                 da_pct, er
                             )
                             VALUES (
-                                :lot_no, :year, :sample_date,
+                                :地段地號, :year, :sample_date,
                                 :coord_x, :coord_y,
                                 :photo_site, :photo_sample,
                                 CAST(:xrf AS JSONB), CAST(:total AS JSONB), :used_total,
-                                :admin_status, :metal_result, :freq,
+                                :農地監測狀態, :metal_result, :網格監測頻率,
                                 CAST(:da_pct AS JSONB), CAST(:er AS JSONB)
                             )
-                            ON CONFLICT (lot_no, year) DO UPDATE SET
+                            ON CONFLICT (地段地號, year) DO UPDATE SET
                                 sample_date=EXCLUDED.sample_date,
                                 coord_x=EXCLUDED.coord_x,
                                 coord_y=EXCLUDED.coord_y,
@@ -1013,14 +1013,14 @@ def page_add_annual(engine):
                                 xrf=EXCLUDED.xrf,
                                 total=EXCLUDED.total,
                                 used_total=EXCLUDED.used_total,
-                                admin_status=EXCLUDED.admin_status,
+                                農地監測狀態=EXCLUDED.農地監測狀態,
                                 metal_result=EXCLUDED.metal_result,
-                                freq=EXCLUDED.freq,
+                                網格監測頻率=EXCLUDED.網格監測頻率,
                                 da_pct=EXCLUDED.da_pct,
                                 er=EXCLUDED.er,
                                 created_at=NOW();
                         """), {
-                            "lot_no": rec["lot_no"],
+                            "地段地號": rec["地段地號"],
                             "year": rec["year"],
                             "sample_date": rec["sample_date"],
                             "coord_x": rec["coord_x"],
@@ -1030,9 +1030,9 @@ def page_add_annual(engine):
                             "xrf": json.dumps(rec["xrf"], ensure_ascii=False),
                             "total": json.dumps(rec["total"], ensure_ascii=False),
                             "used_total": rec["used_total"],
-                            "admin_status": rec["admin_status"],
+                            "農地監測狀態": rec["農地監測狀態"],
                             "metal_result": rec["metal_result"],
-                            "freq": rec["freq"],
+                            "網格監測頻率": rec["網格監測頻率"],
                             "da_pct": json.dumps(rec["da_pct"], ensure_ascii=False),
                             "er": json.dumps(rec["er"], ensure_ascii=False),
                         })
@@ -1041,12 +1041,12 @@ def page_add_annual(engine):
                         # 年度狀態欄：依你規則：若任一金屬 > 監測標準 -> "監測"；全正常 -> "正常"；
                         # 現勘若建物/難以採樣/管制 -> 對應填入
                         status_for_year = "監測" if rec["metal_result"] in ["增量", "延長"] else "正常"
-                        if rec["admin_status"] in ["建物", "難以採樣", "管制"]:
-                            status_for_year = rec["admin_status"]
+                        if rec["農地監測狀態"] in ["建物", "難以採樣", "管制"]:
+                            status_for_year = rec["農地監測狀態"]
 
                         # 取現有 year_status
-                        land_row = conn.execute(text("SELECT year_status FROM lands WHERE lot_no=:lot;"),
-                                                {"lot": rec["lot_no"]}).mappings().first()
+                        land_row = conn.execute(text("SELECT year_status FROM lands WHERE 地段地號=:lot;"),
+                                                {"lot": rec["地段地號"]}).mappings().first()
                         ys = land_row["year_status"] if land_row and land_row["year_status"] else {}
                         if isinstance(ys, str):
                             try:
@@ -1059,14 +1059,14 @@ def page_add_annual(engine):
                         ys[str(rec["year"])] = status_for_year
 
                         # 主檔狀態：以現勘優先
-                        new_admin = rec["admin_status"]  # 監測/正常/管制/建物/難以採樣
+                        new_admin = rec["農地監測狀態"]  # 監測/正常/管制/建物/難以採樣
                         # 目前農地調查現況：建物/難以採樣/管制 => 同字；否則用 metal_result
                         if new_admin in ["管制", "建物", "難以採樣"]:
                             new_current = new_admin
-                            new_freq = "管制" if new_admin == "管制" else ""  # 建物/難以採樣可留空或自訂
+                            new_網格監測頻率 = "管制" if new_admin == "管制" else ""  # 建物/難以採樣可留空或自訂
                         else:
                             new_current = rec["metal_result"]
-                            new_freq = rec["freq"]
+                            new_網格監測頻率 = rec["網格監測頻率"]
 
                         update_coord = rec.get("update_master_coord", False)
                         if update_coord:
@@ -1075,41 +1075,41 @@ def page_add_annual(engine):
                                 SET
                                     coord_x=:x,
                                     coord_y=:y,
-                                    admin_status=:admin_status,
-                                    current_metal_result=:cur,
-                                    freq=:freq,
-                                    last_year=:year,
+                                    農地監測狀態=:農地監測狀態,
+                                    農地監測狀態=:cur,
+                                    網格監測頻率=:網格監測頻率,
+                                    最後調查年分=:year,
                                     year_status=CAST(:ys AS JSONB),
                                     updated_at=NOW()
-                                WHERE lot_no=:lot;
+                                WHERE 地段地號=:lot;
                             """), {
                                 "x": rec["coord_x"],
                                 "y": rec["coord_y"],
-                                "admin_status": new_admin,
+                                "農地監測狀態": new_admin,
                                 "cur": new_current,
-                                "freq": new_freq,
+                                "網格監測頻率": new_網格監測頻率,
                                 "year": rec["year"],
                                 "ys": json.dumps(ys, ensure_ascii=False),
-                                "lot": rec["lot_no"],
+                                "lot": rec["地段地號"],
                             })
                         else:
                             conn.execute(text("""
                                 UPDATE lands
                                 SET
-                                    admin_status=:admin_status,
-                                    current_metal_result=:cur,
-                                    freq=:freq,
-                                    last_year=:year,
+                                    農地監測狀態=:農地監測狀態,
+                                    農地監測狀態=:cur,
+                                    網格監測頻率=:網格監測頻率,
+                                    最後調查年分=:year,
                                     year_status=CAST(:ys AS JSONB),
                                     updated_at=NOW()
-                                WHERE lot_no=:lot;
+                                WHERE 地段地號=:lot;
                             """), {
-                                "admin_status": new_admin,
+                                "農地監測狀態": new_admin,
                                 "cur": new_current,
-                                "freq": new_freq,
+                                "網格監測頻率": new_網格監測頻率,
                                 "year": rec["year"],
                                 "ys": json.dumps(ys, ensure_ascii=False),
-                                "lot": rec["lot_no"],
+                                "lot": rec["地段地號"],
                             })
 
                 st.success("✅ 已寫入 DB 並更新主檔")
@@ -1144,7 +1144,7 @@ def page_history(engine):
         return
     lot_selected = None
     if not df.empty:
-        lot_selected = st.selectbox("選擇 lot_no", df["lot_no"].tolist())
+        lot_selected = st.selectbox("選擇 地段地號", df["地段地號"].tolist())
 
     if lot_selected:
         hist = db_fetch_samples(engine, lot_selected)
@@ -1166,19 +1166,19 @@ def page_master_list(engine):
     with engine.begin() as conn:
         df = pd.read_sql(text("""
             SELECT
-                lot_no AS 地段地號,
-                sgm_no AS SGM編號,
-                grid_id AS 網格編號,
-                township AS 鄉鎮市,
-                survey_method AS 調查方式,
-                rep_role AS 代表性,
-                water_type AS 用水種類,
-                admin_status AS 農地監測狀態,
-                current_metal_result AS 目前農地調查現況,
-                freq AS 網格監測頻率,
-                last_year AS 最後調查年分
+                地段地號 AS 地段地號,
+                sSGM編號 AS SGM編號,
+                網格編號 AS 網格編號,
+                鄉鎮市 AS 鄉鎮市,
+                調查方式 AS 調查方式,
+                代表性 AS 代表性,
+                用水種類 AS 用水種類,
+                農地監測狀態 AS 農地監測狀態,
+                農地監測狀態 AS 目前農地調查現況,
+                網格監測頻率 AS 網格監測頻率,
+                最後調查年分 AS 最後調查年分
             FROM lands
-            ORDER BY grid_id, lot_no
+            ORDER BY 網格編號, 地段地號
             LIMIT 5000;
         """), conn)
 
@@ -1209,9 +1209,9 @@ def page_search(engine):
     row = df.iloc[0].to_dict()
     st.markdown("### 🧾 資訊卡（第一筆）")
     c1, c2, c3 = st.columns(3)
-    c1.write({"地段地號": row.get("lot_no"), "SGM": row.get("sgm_no"), "網格": row.get("grid_id")})
-    c2.write({"現勘狀態": row.get("admin_status"), "現況": row.get("current_metal_result"), "頻率": row.get("freq")})
-    c3.write({"X": row.get("coord_x"), "Y": row.get("coord_y"), "最後年分": row.get("last_year")})
+    c1.write({"地段地號": row.get("地段地號"), "SGM": row.get("sSGM編號"), "網格": row.get("網格編號")})
+    c2.write({"現勘狀態": row.get("農地監測狀態"), "現況": row.get("農地監測狀態"), "頻率": row.get("網格監測頻率")})
+    c3.write({"X": row.get("coord_x"), "Y": row.get("coord_y"), "最後年分": row.get("最後調查年分")})
 
 
 # =========================================================
@@ -1224,21 +1224,21 @@ def pick_marker_style(row: Dict[str, Any]) -> Tuple[str, int, str]:
     return (shape, sides, color)
     shape: "polygon" or "circle"
     """
-    admin_status = nstr(row.get("admin_status"))
-    cur = nstr(row.get("current_metal_result"))
-    rep = nstr(row.get("rep_role"))
-    method = nstr(row.get("survey_method")) + " " + nstr(row.get("water_type"))
+    農地監測狀態 = nstr(row.get("農地監測狀態"))
+    cur = nstr(row.get("農地監測狀態"))
+    rep = nstr(row.get("代表性"))
+    method = nstr(row.get("調查方式")) + " " + nstr(row.get("用水種類"))
 
     # 備用點：菱形 白色
     if "備用" in rep:
         return ("polygon", 4, "white")  # diamond 近似
 
     # 六角形：管制/建物/難以採樣
-    if admin_status == "管制" or cur == "管制":
+    if 農地監測狀態 == "管制" or cur == "管制":
         return ("polygon", 6, "red")
-    if admin_status == "建物" or cur == "建物":
+    if 農地監測狀態 == "建物" or cur == "建物":
         return ("polygon", 6, "black")
-    if admin_status in ["難以採樣", "無法採樣"] or cur in ["難以採樣", "無法採樣"]:
+    if 農地監測狀態 in ["難以採樣", "無法採樣"] or cur in ["難以採樣", "無法採樣"]:
         return ("polygon", 6, "purple")
 
     # 系統型 vs 個案型（用調查方式/用水種類文字猜）
@@ -1278,8 +1278,8 @@ def page_map(engine):
 
     with engine.begin() as conn:
         df = pd.read_sql(text("""
-            SELECT lot_no, sgm_no, grid_id, township, survey_method, rep_role, water_type,
-                   coord_x, coord_y, admin_status, current_metal_result, freq, last_year
+            SELECT 地段地號, sSGM編號, 網格編號, 鄉鎮市, 調查方式, 代表性, 用水種類,
+                   coord_x, coord_y, 農地監測狀態, 農地監測狀態, 網格監測頻率, 最後調查年分
             FROM lands
             WHERE coord_x IS NOT NULL AND coord_y IS NOT NULL
             LIMIT 5000;
@@ -1304,14 +1304,14 @@ def page_map(engine):
 
         shape, sides, color = pick_marker_style(row)
         popup_html = f"""
-        <b>地段地號：</b>{row.get('lot_no','')}<br>
-        <b>SGM：</b>{row.get('sgm_no','')}<br>
-        <b>網格：</b>{row.get('grid_id','')}<br>
-        <b>鄉鎮：</b>{row.get('township','')}<br>
-        <b>現勘狀態：</b>{row.get('admin_status','')}<br>
-        <b>現況：</b>{row.get('current_metal_result','')}<br>
-        <b>頻率：</b>{row.get('freq','')}<br>
-        <b>最後年分：</b>{row.get('last_year','')}<br>
+        <b>地段地號：</b>{row.get('地段地號','')}<br>
+        <b>SGM：</b>{row.get('sSGM編號','')}<br>
+        <b>網格：</b>{row.get('網格編號','')}<br>
+        <b>鄉鎮：</b>{row.get('鄉鎮市','')}<br>
+        <b>現勘狀態：</b>{row.get('農地監測狀態','')}<br>
+        <b>現況：</b>{row.get('農地監測狀態','')}<br>
+        <b>頻率：</b>{row.get('網格監測頻率','')}<br>
+        <b>最後年分：</b>{row.get('最後調查年分','')}<br>
         """
 
         if shape == "circle":
@@ -1405,6 +1405,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
