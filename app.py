@@ -334,170 +334,178 @@ if df_master is not None:
 
     # --- C. [重點] 新年度調查點篩選名單 (演算法完全體) ---
     elif menu == "新年度調查點篩選名單":
-        st.title("📅 年度調查計畫決策系統")
+        st.title("📅 年度調查計畫規劃工作流")
         
-        # Session State 初始化
-        if 'excluded_lots' not in st.session_state: st.session_state.excluded_lots = []
-        if 'saved_plan' not in st.session_state: st.session_state.saved_plan = None
-        if 'manual_sys_grids' not in st.session_state: st.session_state.manual_sys_grids = []
-        if 'manual_case_lots' not in st.session_state: st.session_state.manual_case_lots = []
-
-        # 模式設定
-        plan_mode = st.radio("選擇名單產出模式", ["自動系統產生 (具遞補功能)", "手動自選名單"], horizontal=True)
-
+        # 1. 參數設定
         c1, c2 = st.columns(2)
-        target_year = c1.number_input("設定計畫年度 (民國)", value=get_minguo_year()+1)
-        quota = c2.number_input("設定預計調查總筆數", value=500, step=50)
+        target_year = c1.number_input("設定計畫目標年度 (民國)", value=get_minguo_year()+1)
+        quota = c2.number_input("設定本年度調查預算筆數", value=500, step=10)
 
-        # --- 演算法池建立 ---
+        # 2. 演算法引擎 (加入 2年/10年 邏輯)
         df_calc = df_master.copy()
         
-        if plan_mode.startswith("自動"):
-            # A. 系統型
-            sys_pool = []
-            grids = df_calc[df_calc['調查方式'].str.contains('系統', na=False)]['網格編號'].unique()
-            for gid in grids:
-                g_data = df_calc[df_calc['網格編號'] == gid]
-                f, ly = str(g_data['網格監測頻率'].iloc[0]), g_data['最後調查年分'].max()
-                prio = 1 if f == '持續' else (2 if f == '延長' and (target_year - ly >= 2) else 99)
-                if prio < 99:
-                    reps = g_data[(g_data['代表性'] == '代表點') & (~g_data['農地監測狀態'].isin(['管制','建物','難以採樣']))]
-                    if len(reps) < 3:
-                        backups = g_data[g_data['代表性'] == '備用點'].sort_values('農地序號').head(3 - len(reps)).copy()
-                        backups['篩選備註'] = '備用遞補'
-                        final_g = pd.concat([reps, backups])
-                    else: final_g = reps.copy(); final_g['篩選備註'] = '代表點監測'
-                    final_g['優先權重'], final_g['計畫類別'] = prio, '系統型網格'
-                    sys_pool.append(final_g)
+        # (A) 系統型網格篩選
+        sys_pool = []
+        all_grids = df_calc[df_calc['調查方式'].str.contains('系統', na=False)]['網格編號'].unique()
+        for gid in all_grids:
+            g_data = df_calc[df_calc['網格編號'] == gid]
+            freq_str, last_y = str(g_data['網格監測頻率'].iloc[0]), g_data['最後調查年分'].max()
             
-            # B. 個案型
-            case_active = df_calc[~df_calc['調查方式'].str.contains('系統', na=False)].copy()
-            case_active = case_active[~case_active['農地監測狀態'].isin(['管制','建物','正常'])]
-            def c_prio(r):
-                if str(r['目前農地調查現況']) == '增量': return 1
-                if str(r['目前農地調查現況']) == '延長' and (target_year - r['最後調查年分'] >= r['延長頻率']): return 3
-                return 99
-            case_active['優先權重'] = case_active.apply(c_prio, axis=1)
-            case_pool = case_active[case_active['優先權重'] < 99].copy()
-            case_pool['計畫類別'], case_pool['篩選備註'] = '個案型農地', '獨立判定'
+            # 排除前一年剛調查過的
+            if last_y == target_year - 1: continue
+            
+            # 週期判定：持續型 2 年，延長型 10 年
+            prio = 99
+            if freq_str == '持續' and (target_year - last_y >= 2): prio = 1
+            elif freq_str == '延長' and (target_year - last_y >= 10): prio = 2
+            
+            if prio < 99:
+                reps = g_data[(g_data['代表性'] == '代表點') & (~g_data['農地監測狀態'].isin(['管制','建物','難以採樣']))]
+                if len(reps) < 3: # 補位邏輯
+                    needed = 3 - len(reps)
+                    backs = g_data[g_data['代表性'] == '備用點'].sort_values('農地序號').head(needed).copy()
+                    backs['篩選備註'] = '備用遞補'
+                    final_g = pd.concat([reps, backs])
+                else: final_g = reps.copy(); final_g['篩選備註'] = '代表點'
+                final_g['優先權重'], final_g['計畫類別'] = prio, '系統型網格'
+                sys_pool.append(final_g)
 
-            # 總候選池 (排除已手動勾除的)
-            full_candidate_pool = pd.concat([pd.concat(sys_pool) if sys_pool else pd.DataFrame(), case_pool]).sort_values(['優先權重', '網格編號', '農地序號'])
-            eligible_pool = full_candidate_pool[~full_candidate_pool['地段地號'].isin(st.session_state.excluded_lots)]
-            current_selection = eligible_pool.head(int(quota)).copy()
+        # (B) 個案型篩選
+        case_active = df_calc[~df_calc['調查方式'].str.contains('系統', na=False)].copy()
+        case_active = case_active[~case_active['農地監測狀態'].isin(['管制','建物','正常'])]
+        def case_algo(r):
+            last = r['最後調查年分']
+            if last == target_year - 1: return 99
+            if str(r['目前農地調查現況']) == '增量' and (target_year - last >= 2): return 1
+            if str(r['目前農地調查現況']) == '延長' and (target_year - last >= 10): return 3
+            return 99
+        case_active['優先權重'] = case_active.apply(case_algo, axis=1)
+        case_pool = case_active[case_active['優先權重'] < 99].copy()
+        case_pool['計畫類別'], case_pool['篩選備註'] = '個案型農地', '獨立判定'
+
+        # 合併與排除過濾
+        full_pool = pd.concat([pd.concat(sys_pool) if sys_pool else pd.DataFrame(), case_pool]).sort_values(['優先權重', '網格編號'])
+        eligible_pool = full_pool[~full_pool['地段地號'].isin(st.session_state.excluded_lots)]
+        current_selection = eligible_pool.head(int(quota)).copy()
+        current_selection.insert(0, '選擇', '✅ 留用')
+
+        # 3. 第一階段：名單去留確認
+        st.subheader("第一階段：初步名單去留與自動補位")
+        st.info("若標記為『❌ 排除』並按下按鈕，系統將自動從資料庫後方遞補新農地。")
         
-        else: # 手動模式
-            col_m1, col_m2 = st.columns(2)
-            sys_opts = df_calc[df_calc['調查方式'].str.contains('系統', na=False)]['網格編號'].unique()
-            case_opts = df_calc[~df_calc['調查方式'].str.contains('系統', na=False)]['地段地號'].unique()
-            with col_m1:
-                st.markdown('<div class="manual-box"><b>1. 挑選網格</b>', unsafe_allow_html=True)
-                st.session_state.manual_sys_grids = st.multiselect("選取網格 ID", sys_opts, default=st.session_state.manual_sys_grids)
-                st.markdown('</div>', unsafe_allow_html=True)
-            with col_m2:
-                st.markdown('<div class="manual-box"><b>2. 挑選個案</b>', unsafe_allow_html=True)
-                st.session_state.manual_case_lots = st.multiselect("選取地段地號", case_opts, default=st.session_state.manual_case_lots)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            m_s = df_calc[df_calc['網格編號'].isin(st.session_state.manual_sys_grids) & (df_calc['代表性']=='代表點')].copy()
-            m_s['計畫類別'] = '系統型網格'
-            m_c = df_calc[df_calc['地段地號'].isin(st.session_state.manual_case_lots)].copy()
-            m_c['計畫類別'] = '個案型農地'
-            manual_pool = pd.concat([m_s, m_c])
-            # 手動模式也排除「勾掉」的點
-            current_selection = manual_pool[~manual_pool['地段地號'].isin(st.session_state.excluded_lots)].copy()
+        if st.button("🔥 確定清出打叉 (❌) 的農地並補足差額"):
+            # 此處邏輯由 st.rerun 自動處理 st.session_state.excluded_lots
+            st.success("排除名單已更新，系統已自動遞補。")
 
-        current_selection['選擇'] = True # 初始化 Checkbox 狀態
-
-        # --- 統計看板 ---
-        st.markdown('<div class="stats-container">', unsafe_allow_html=True)
-        st.subheader(f"📊 {target_year} 年度擬定計畫統計")
-        if not current_selection.empty:
-            s_s = current_selection[current_selection['計畫類別']=='系統型網格']
-            c_s = current_selection[current_selection['計畫類別']=='個案型農地']
-            k1, k2, k3, k4 = st.columns(4)
-            k1.metric("網格總數", len(s_s['網格編號'].unique()))
-            k2.metric("系統農地筆數", len(s_s))
-            k3.metric("個案農地筆數", len(c_s))
-            k4.metric("總調查筆數", len(current_selection))
-            
-            p_count = len(s_s[s_s['網格監測頻率']=='持續']['網格編號'].unique())
-            l_count = len(s_s[s_s['網格監測頻率']=='延長']['網格編號'].unique())
-            c_p = len(c_s[c_s['目前農地調查現況']=='增量'])
-            c_l = len(c_s[c_s['目前農地調查現況']=='延長'])
-            st.write(f"🔹 網格分布：持續(淺紅) {p_count} / 延長(淺藍) {l_count} | 🔸 個案分布：持續(黃色) {c_p} / 延長(綠色) {c_l}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # --- 表單勾選區 (去留與自動補足) ---
-        st.write("---")
-        t1, t2 = st.tabs(["🌐 系統型篩選清單", "📦 個案型篩選清單"])
-        disp_cols = ['選擇', '網格編號', '地段地號', '農地序號', 'TWD97_X', 'TWD97_Y', '目前農地調查現況', '最後調查年分']
+        # 編輯器 (滿足第 2 點：✅ / ❌ 選單)
+        edited_init = st.data_editor(
+            current_selection[['選擇','網格編號','地段地號','農地序號','TWD97_X','TWD97_Y','目前農地調查現況','篩選備註']],
+            column_config={"選擇": st.column_config.SelectboxColumn("留用/排除", options=["✅ 留用", "❌ 排除"], required=True)},
+            key="init_editor", use_container_width=True
+        )
         
-        with t1:
-            ed_s = st.data_editor(s_sel := current_selection[current_selection['計畫類別']=='系統型網格'][disp_cols], key="sys_ed", use_container_width=True)
-            removed_s = ed_s[ed_s['選擇'] == False]['地段地號'].tolist()
-            if removed_s: st.session_state.excluded_lots.extend(removed_s); st.rerun()
+        # 紀錄排除名單
+        new_excludes = edited_init[edited_init['選擇'] == "❌ 排除"]['地段地號'].tolist()
+        for lot in new_excludes:
+            if lot not in st.session_state.excluded_lots:
+                st.session_state.excluded_lots.append(lot)
+                st.rerun()
 
-        with t2:
-            ed_c = st.data_editor(c_sel := current_selection[current_selection['計畫類別']=='個案型農地'][disp_cols], key="case_ed", use_container_width=True)
-            removed_c = ed_c[ed_c['選擇'] == False]['地段地號'].tolist()
-            if removed_c: st.session_state.excluded_lots.extend(removed_c); st.rerun()
-
-        # --- 存檔按鈕 (功能保留) ---
+        # 4. 第二階段：現勘紀錄與儲存 (滿足第 4 點)
         st.divider()
-        if st.button("💾 確認名單並產生儲存檔案"):
-            st.session_state.saved_plan = current_selection.drop(columns=['選擇'])
-            st.success("名單已儲存！請見下方區域。")
+        st.subheader("第二階段：確認名單與現勘紀錄")
+        
+        if st.button("💾 確認名單並產生儲存檔案 (進入現勘階段)"):
+            st.session_state.temp_plan = current_selection.copy()
 
-        if st.session_state.saved_plan is not None:
-            st.subheader(f"📄 已儲存之 {target_year} 年度正式計畫名單")
-            st.data_editor(st.session_state.saved_plan, use_container_width=True)
-            towrite = io.BytesIO()
-            st.session_state.saved_plan.to_excel(towrite, index=False, engine='xlsxwriter')
-            st.download_button(f"📥 下載 {target_year} 計畫 Excel", data=towrite.getvalue(), file_name=f"彰化定監計畫_{target_year}.xlsx")
+        if st.session_state.temp_plan is not None:
+            st.markdown('<div class="filter-card"><b>年度正式計畫工作清單</b></div>', unsafe_allow_html=True)
+            plan = st.session_state.temp_plan.copy()
+            # 增加微調與現勘欄位
+            if '微調' not in plan.columns: plan.insert(0, '微調', True)
+            if '現勘結果' not in plan.columns: plan['現勘結果'] = '系統型' # 預設
+            
+            # 使用 data_editor 進行現勘錄入
+            recon_df = st.data_editor(
+                plan[['微調','地段地號','網格編號','現勘結果','目前農地調查現況','TWD97_X','TWD97_Y']],
+                column_config={"現勘結果": st.column_config.SelectboxColumn("現場紀錄", options=["系統型","個案型","建物","難以採樣"])},
+                key="recon_editor", use_container_width=True
+            )
+            
+            # 確定刪除所選 (滿足第 3 點)
+            if st.button("🗑️ 確定刪除所選微調名單"):
+                to_del = recon_df[recon_df['微調']==False]['地段地號'].tolist()
+                st.session_state.excluded_lots.extend(to_del)
+                st.session_state.temp_plan = None
+                st.rerun()
 
-        if st.button("🔄 重置篩選 (清空所有手動排除)"):
-            st.session_state.excluded_lots = []; st.session_state.saved_plan = None
+            # 5. 統計數據展示 (滿足第 4 點)
+            st.markdown('<div class="stats-container">', unsafe_allow_html=True)
+            st.subheader("📊 擬定清單詳細統計")
+            s_plan = recon_df[recon_df['現勘結果'].isin(['系統型','個案型'])]
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("系統網格數", len(s_plan[s_plan['現勘結果']=='系統型']['網格編號'].unique()))
+            c2.metric("系統農地筆數", len(s_plan[s_plan['現勘結果']=='系統型']))
+            c3.metric("個案農地筆數", len(s_plan[s_plan['現勘結果']=='個案型']))
+            c4.metric("計畫總有效筆數", len(s_plan))
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # 6. 最終歸檔 (滿足第 5 點)
+        st.divider()
+        col_f1, col_f2 = st.columns(2)
+        if col_f1.button("✅ 最終調查名單確認 (存入歷史庫)"):
+            if st.session_state.temp_plan is not None:
+                archive_id = f"{target_year}_計畫_存檔_{datetime.now().strftime('%m%d_%H%M')}"
+                st.session_state.archived_plans[archive_id] = st.session_state.temp_plan.copy()
+                st.session_state.temp_plan = None # 消失當前計畫
+                st.success(f"計畫已存入下方資料庫。工作區已清空。")
+                st.balloons()
+        
+        if col_f2.button("🔄 重置篩選 (清空所有排除)"):
+            st.session_state.excluded_lots = []; st.session_state.temp_plan = None
             st.rerun()
 
-        # --- [GIS 地圖] 放在頁面最下方 ---
-        st.divider()
-        st.subheader("🗺️ 年度擬定調查計畫分布圖")
-        m_plan = folium.Map(location=[24.05, 120.5], zoom_start=11, 
-                            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr='Esri')
+        # --- 7. GIS 地圖 (移至頁面最下方) ---
+        st.subheader("🗺️ 計畫點位分布預覽")
+        m_plan = folium.Map(location=[24.05, 120.5], zoom_start=11, tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr='Esri')
         
-        if not current_selection.empty:
-            if gdf_grid is not None:
-                # 僅繪製有名單編號且非空的網格
-                active_gs = current_selection[current_selection['網格編號'] != '']['網格編號'].unique()
-                grid_status_map = current_selection[['網格編號', '網格監測頻率']].drop_duplicates('網格編號')
-                plan_grids = gdf_grid.merge(grid_status_map, left_on='網格號', right_on='網格編號', how='inner').to_crs(epsg=4326)
-                
-                def style_fn(f):
-                    freq = f['properties'].get('網格監測頻率', '')
-                    color = '#FFB6C1' if '持續' in freq else '#ADD8E6' if '延長' in freq else '#f8f9fa'
-                    return {'fillColor': color, 'color': 'white', 'weight': 1, 'fillOpacity': 0.4}
-                
-                folium.GeoJson(plan_grids, style_function=style_fn).add_to(m_plan)
+        # 繪製網格
+        if gdf_grid is not None:
+            active_grids = current_selection[['網格編號','網格監測頻率']].drop_duplicates('網格編號')
+            # 只有有狀態的網格才著色
+            grid_colored = gdf_grid.merge(active_grids, left_on='網格號', right_on='網格編號', how='inner').to_crs(epsg=4326)
+            def style_fn(f):
+                freq = f['properties'].get('網格監測頻率','')
+                color = '#FFB6C1' if '持續' in freq else '#ADD8E6' if '延長' in freq else '#f8f9fa'
+                return {'fillColor': color, 'color': 'white', 'weight': 1, 'fillOpacity': 0.4}
+            folium.GeoJson(grid_colored, style_function=style_fn).add_to(m_plan)
 
-            for _, r in current_selection.iterrows():
-                try:
-                    lon, lat = transformer_to_wgs84.transform(r['TWD97_X'], r['TWD97_Y'])
-                    status, cat = str(r['目前農地調查現況']), str(r['計畫類別'])
-                    
-                    # 點位圖示規則修正
-                    sides = 4; color = "green" # 預設
-                    if "系統" in cat:
-                        sides = 3 # 三角形
-                        color = "red" if "增量" in status else "blue"
-                    else:
-                        sides = 4 # 正方形
-                        color = "yellow" if "增量" in status else "green"
-                    
-                    folium.RegularPolygonMarker(location=[lat, lon], number_of_sides=sides, radius=8, color=color, fill=True, fill_opacity=0.9,
-                                                popup=f"地號: {r['地段地號']}").add_to(m_plan)
-                except: continue
-        st_folium(m_plan, width=1100, height=600, key="plan_map_final")
+        # 繪製點位 (符合新圖示規則)
+        for _, r in current_selection.iterrows():
+            try:
+                lon, lat = transformer_to_wgs84.transform(r['TWD97_X'], r['TWD97_Y'])
+                cat, status = str(r['計畫類別']), str(r['目前農地調查現況'])
+                # 圖示邏輯：系統=三角, 個案=正方
+                sides = 3 if "系統" in cat else 4
+                # 顏色邏輯：持續=紅(系統)或黃(個案), 延長=藍(系統)或綠(個案)
+                if sides == 3: color = "red" if "增量" in status else "blue"
+                else: color = "yellow" if "增量" in status else "green"
+                folium.RegularPolygonMarker(location=[lat, lon], number_of_sides=sides, radius=8, color=color, fill=True).add_to(m_plan)
+            except: continue
+        st_folium(m_plan, width=1100, height=500, key="plan_map_vis")
+
+        # 8. 歷史計畫資料庫 (頁面最底)
+        st.divider()
+        st.subheader("📚 歷史計畫檔案庫")
+        if st.session_state.archived_plans:
+            for pid, pdata in st.session_state.archived_plans.items():
+                with st.expander(f"📂 存檔計畫：{pid}"):
+                    st.dataframe(pdata)
+                    tw = io.BytesIO()
+                    pdata.to_excel(tw, index=False, engine='xlsxwriter')
+                    st.download_button(f"📥 下載 {pid} Excel", data=tw.getvalue(), file_name=f"{pid}.xlsx")
+        else: st.info("尚無歷史存檔紀錄")
+
     # --- D. 新增結果 ---
     elif menu == "新增年度調查結果":
         st.title("➕ 錄入年度數據與 DA 判定")
@@ -539,6 +547,7 @@ if df_master is not None:
         st_folium(m, width=1100, height=700)
 else:
     st.error("❌ Excel 載入失敗")
+
 
 
 
