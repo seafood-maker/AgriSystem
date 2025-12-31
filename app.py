@@ -271,7 +271,6 @@ if df_master is not None:
 
         with tabs[5]: # 修改紀錄
             if os.path.exists(LOG_PATH): st.dataframe(pd.read_csv(LOG_PATH))
-
     # --- C. 新年度調查點篩選名單 (旗艦版工作流) ---
     elif menu == "新年度調查點篩選名單":
         st.title("📅 調查計畫決策與自動補位系統")
@@ -451,6 +450,7 @@ if df_master is not None:
         st_folium(m_map, width=1200, height=750)
 
 else: st.error("資料載入失敗")
+
 
 
 
