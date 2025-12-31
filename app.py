@@ -188,42 +188,81 @@ if df_master is not None:
     # --- B. 資料庫查詢與下載 (含 GIS 一致性核對) ---
     elif menu == "資料庫查詢與下載":
         st.title("📂 數據查詢中心")
-        tabs = st.tabs(["📋 總表清單", "📅 歷年調查結果", "🏠 坵塊管理", "🌐 系統型清單", "📦 個案型清單", "⚠️ 數據一致性核對"])
+        admin_mode = False
+        with st.sidebar.expander("🔐 管理員修正權限"):
+            if st.text_input("輸入修正密碼", type="password") == ADMIN_PASSWORD: admin_mode = True; st.success("編輯模式開啟")
         
-        with tabs[0]: # 總表 (圖示移位、黑標題)
-            sm = st.text_input("🔍 搜尋地號/序號/網格", key="m_s_tab")
-            df_p = df_master.copy()
-            df_p['代表性顯示'] = df_p.apply(lambda r: get_pretty_rep(r, df_block), axis=1)
-            cols = list(df_p.columns)
-            if '農地序號' in cols:
-                idx = cols.index('農地序號')+1; cols.insert(idx, cols.pop(cols.index('代表性顯示'))); df_p = df_p[cols]
-            if sm: df_p = df_p[df_p.astype(str).apply(lambda x: x.str.contains(sm)).any(axis=1)]
-            st.dataframe(df_p, height=800, use_container_width=True)
+        tabs = st.tabs(["📋 總表清單", "📅 歷年調查結果", "🏠 坵塊管理", "🌐 系統型清單", "📦 個案型清單", "📜 修改紀錄"])
+        
+        with tabs[0]: # 1. 總表清單 (黑標題、圖示移位、搜尋欄)
+            st.subheader("🌾 農地現況全量清單")
+            search_m = st.text_input("🔍 快速搜尋地號/序號/網格", key="m_search_db")
+            df_pretty = df_master.copy()
+            df_pretty['代表性顯示'] = df_pretty.apply(lambda r: get_pretty_rep(r, df_block), axis=1)
+            # 欄位移位邏輯
+            cols = list(df_pretty.columns)
+            if '農地序號' in cols and '代表性顯示' in cols:
+                idx = cols.index('農地序號')+1; cols.insert(idx, cols.pop(cols.index('代表性顯示'))); df_pretty = df_pretty[cols]
+            if search_m: df_pretty = df_pretty[df_pretty.astype(str).apply(lambda x: x.str.contains(search_m)).any(axis=1)]
+            st.dataframe(df_pretty, height=800, use_container_width=True)
             
-        with tabs[3]: # 系統型 (彩色方塊)
-            sc1, sc2, sc3 = st.columns(3)
+        with tabs[1]: # 2. 歷年調查結果 (修正年度)
+            st.subheader("📅 年度調查紀錄明細")
+            y_list = sorted(df_history['調查年度'].unique(), reverse=True)
+            y_sel = st.selectbox("選擇年度", y_list if y_list else [113])
+            y_res = df_history[df_history['調查年度'] == int(y_sel)].copy()
+            if not y_res.empty:
+                st.dataframe(y_res.merge(df_master[['SGM編號','地段地號','調查方式','目前農地調查現況']], on='SGM編號', how='left'), use_container_width=True)
+            else: st.warning("該年度無數據")
+            
+        with tabs[2]: # 3. 坵塊管理 (自動編號+搜尋)
+            st.subheader("🏠 坵塊群組搜尋與管理")
+            blk_q = st.text_input("🔍 輸入地號查詢同群組成員")
+            if blk_q and blk_q in df_block['農地地段地號'].values:
+                gid = df_block[df_block['農地地段地號']==blk_q].iloc[0]['農地群組編號']
+                st.success(f"群組: {gid}"); st.dataframe(df_block[df_block['農地群組編號']==gid])
+            with st.expander("➕ 批次新增同坵塊群組"):
+                try: 
+                    last_id = df_block['農地群組編號'].str.extract('(\d+)').dropna().astype(int).max()[0]
+                    nid = f"BLOCK_{str(last_id+1).zfill(3)}"
+                except: nid = "BLOCK_001"
+                with st.form("nb_form"):
+                    st.write(f"預計編號: **{nid}**"); li = st.text_area("地號清單(每行一筆)"); ri = st.text_input("指定代表點地號"); 
+                    if st.form_submit_button("確認建立"): st.info("已提交排程")
+            st.write("**現有對照表：**"); st.dataframe(df_block, height=400)
+
+        with tabs[3]: # 4. 系統型清單 (方塊選單與詳細統計)
+            st.subheader("🌐 系統型分類看板")
+            s_q_sys = st.text_input("🔍 全域網格號搜尋", key="s_sys_q")
+            sc_cols = st.columns(3)
             for i, f in enumerate(['持續','延長','退場']):
-                with sc1 if i==0 else sc2 if i==1 else sc3:
+                with sc_cols[i]:
                     st.markdown(f'<div class="status-header bg-{"p" if i==0 else "l" if i==1 else "e"}">{f}網格</div>', unsafe_allow_html=True)
-                    ids = grid_data_uniq[grid_data_uniq['網格監測頻率']==f]['網格編號'].tolist()
-                    sel = st.selectbox(f"{f}名單", ["未選"]+ids, key=f"sys_box_{f}")
+                    ids = all_grid_recs[all_grid_recs['網格監測頻率']==f]['網格編號'].tolist()
+                    sel = st.selectbox(f"{f}網格清單", ["未選"]+ids, key=f"sys_box_{f}")
                     if sel != "未選":
                         gv = df_master[df_master['網格編號']==sel].copy()
-                        st.info(f"網格 {sel} 統計：農地 {len(gv)} 筆 | 代表點 {len(gv[gv['代表性']=='代表點'])}")
+                        st.info(f"📍 網格 {sel}：農地 {len(gv)} 筆 | 代表點 {len(gv[gv['代表性']=='代表點'])} | 備用點 {len(gv[gv['代表性']=='備用點'])}")
                         gv['圖示'] = gv.apply(lambda r: get_pretty_rep(r, df_block), axis=1)
-                        st.dataframe(gv[['圖示','農地序號','地段地號','農地監測狀態','目前農地調查現況']])
+                        st.dataframe(gv[['圖示','農地序號','地段地號','目前農地調查現況']])
+            st.divider(); st.write("**系統型農地總表：**"); st.dataframe(df_master[df_master['調查方式'].str.contains('系統', na=False)], height=400)
 
-        with tabs[5]: # 一致性核對 (Excel vs SHP)
-            st.subheader("⚠️ Excel 與 SHP 數據不一致清單")
-            if gdf_grid is not None:
-                # 合併比對
-                comp = pd.merge(gdf_grid[['網格號', '狀態']], grid_data_uniq[['網格編號', '網格監測頻率']], 
-                                left_on='網格號', right_on='網格編號', how='inner')
-                diff = comp[comp['狀態'] != comp['網格監測頻率']]
-                if not diff.empty:
-                    st.warning(f"偵測到 {len(diff)} 筆不一致：")
-                    st.table(diff[['網格編號', '網格監測頻率', '狀態']].rename(columns={'網格監測頻率':'Excel頻率','狀態':'SHP狀態'}))
-                else: st.success("數據完全一致")
+        with tabs[4]: # 5. 個案型清單 (補齊 6 看板 + 搜尋)
+            st.subheader("📦 個案型監測看板")
+            sc_q_case = st.text_input("🔍 搜尋個案地號/序號", key="case_q_box")
+            c_clabs = ["持續", "延長", "退場", "管制", "難以採樣", "建物"]; c_cols_tab = st.columns(6)
+            for i, lab in enumerate(c_clabs):
+                sub = case_master[case_master['對應狀態']==lab]
+                c_cols_tab[i].metric(lab, len(sub))
+            st.write("**個案型農地總表：**")
+            case_show = case_master
+            if sc_q_case: case_show = case_show[case_show.astype(str).apply(lambda x: x.str.contains(sc_q_case)).any(axis=1)]
+            st.dataframe(case_show, height=400)
+
+        with tabs[5]: # 6. 修改紀錄
+            st.subheader("📜 系統稽核日誌")
+            if os.path.exists(LOG_PATH): st.dataframe(pd.read_csv(LOG_PATH).sort_values(by="修改時間", ascending=False))
+            else: st.info("無紀錄")
     # --- C. 新年度調查點篩選名單 (旗艦版工作流) ---
     elif menu == "新年度調查點篩選名單":
         st.title("📅 調查計畫決策與自動補位系統")
@@ -406,6 +445,7 @@ if df_master is not None:
         st_folium(m, width=1200, height=700)
 else:
     st.error("❌ Excel 載入失敗")
+
 
 
 
